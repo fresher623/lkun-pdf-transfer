@@ -1,3 +1,4 @@
+import java.io.File
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -7,12 +8,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// 发布签名从本机 keystore.properties 读取（.gitignore 已排除，绝不入库）。
-// 文件缺失时不配置 release 签名，debug / benchmark 构建不受影响。
-val keystorePropsFile = rootProject.file("keystore.properties")
-val keystoreProps = Properties().apply {
-    if (keystorePropsFile.exists()) {
-        FileInputStream(keystorePropsFile).use { load(it) }
+// 发布签名配置放在项目目录之外，避免整包拷贝源码时带出口令：
+//   默认 ~/keystores/lk-pdf-transfer/signing.properties，可用环境变量 LK_PDF_SIGNING_PROPERTIES 覆盖。
+// 文件缺失时只是不配置 release 签名，debug / benchmark 构建不受影响；仓库与项目目录本身都不含口令。
+val signingPropsFile = System.getenv("LK_PDF_SIGNING_PROPERTIES")?.let { File(it) }
+    ?: File(System.getProperty("user.home"), "keystores/lk-pdf-transfer/signing.properties")
+val signingProps = Properties().apply {
+    if (signingPropsFile.isFile) {
+        FileInputStream(signingPropsFile).use { load(it) }
     }
 }
 
@@ -35,13 +38,13 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     signingConfigs {
-        if (keystorePropsFile.exists()) {
+        if (signingPropsFile.isFile) {
             create("release") {
-                storeFile = file(keystoreProps.getProperty("storeFile"))
-                storeType = keystoreProps.getProperty("storeType") ?: "PKCS12"
-                storePassword = keystoreProps.getProperty("storePassword")
-                keyAlias = keystoreProps.getProperty("keyAlias")
-                keyPassword = keystoreProps.getProperty("keyPassword")
+                storeFile = file(signingProps.getProperty("storeFile"))
+                storeType = signingProps.getProperty("storeType") ?: "PKCS12"
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
             }
         }
     }
@@ -49,7 +52,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (keystorePropsFile.exists()) {
+            if (signingPropsFile.isFile) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }

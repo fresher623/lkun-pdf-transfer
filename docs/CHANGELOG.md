@@ -7,7 +7,8 @@
 本轮只更换签名与版本号，功能代码与 1.0.3 相同。
 
 - 新增项目自己的发布密钥库（PKCS12，别名 `lkunpdf`，RSA 4096 / SHA384withRSA，有效期 10,000 天），保存在仓库外 `C:\Users\Lenovo\keystores\lk-pdf-transfer\lk-pdf-transfer-release.p12`。
-- `app/build.gradle.kts` 增加 `signingConfigs.release`，从本机 `keystore.properties` 读取口令；该文件已被 `.gitignore` 排除，不入库；文件缺失时不配置发布签名，debug / benchmark 构建不受影响。
+- `app/build.gradle.kts` 增加 `signingConfigs.release`，签名口令放在**项目目录之外**：默认 `~/keystores/lk-pdf-transfer/signing.properties`，可用环境变量 `LK_PDF_SIGNING_PROPERTIES` 覆盖。仓库与项目目录都不含任何口令；配置缺失时只是不产出签名包，debug / benchmark 构建不受影响。
+- 1.0.4 首次构建时口令曾放在项目根目录 `keystore.properties`（已被 `.gitignore` 排除，从未入库、从未推送）；现已迁出到上述外部路径并从项目目录删除。
 - `:app:assembleRelease` 首次产出已签名发布包，签名方案为 APK Signature Scheme v2（minSdk 26，不需要 v1）。
 - 交付文件 `dist/l君のpdf转换-1.0.4-release.apk`，7,173,218 bytes，SHA-256 `9e605a226c0f841a66700a067b9aeeb289968e48ebbe3c3c8494ebcb716c9174`。
 - 证书 SHA-256 `b98e9e4e0bf74b1acc365adb1b885f06c44ed7d67d012562b37c727fb354b098`，有效期 2026-10-27 → 2054-03-14。
