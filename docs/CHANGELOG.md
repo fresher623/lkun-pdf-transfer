@@ -2,6 +2,19 @@
 
 本文对应项目的“修改 md”，按版本记录用户可见行为、修复和交付范围。历史版本继续使用当时的名称与验证结果；详细原始证据见 [测试报告](TEST_REPORT.md)，实施过程见 [迭代记录](ITERATIONS.md)。
 
+## 1.0.4 / versionCode 5：正式发布签名（2026-10-27）
+
+本轮只更换签名与版本号，功能代码与 1.0.3 相同。
+
+- 新增项目自己的发布密钥库（PKCS12，别名 `lkunpdf`，RSA 4096 / SHA384withRSA，有效期 10,000 天），保存在仓库外 `C:\Users\Lenovo\keystores\lk-pdf-transfer\lk-pdf-transfer-release.p12`。
+- `app/build.gradle.kts` 增加 `signingConfigs.release`，从本机 `keystore.properties` 读取口令；该文件已被 `.gitignore` 排除，不入库；文件缺失时不配置发布签名，debug / benchmark 构建不受影响。
+- `:app:assembleRelease` 首次产出已签名发布包，签名方案为 APK Signature Scheme v2（minSdk 26，不需要 v1）。
+- 交付文件 `dist/l君のpdf转换-1.0.4-release.apk`，7,173,218 bytes，SHA-256 `9e605a226c0f841a66700a067b9aeeb289968e48ebbe3c3c8494ebcb716c9174`。
+- 证书 SHA-256 `b98e9e4e0bf74b1acc365adb1b885f06c44ed7d67d012562b37c727fb354b098`，有效期 2026-10-27 → 2054-03-14。
+- **签名与 1.0.0～1.0.3 的调试证书不同**：已装旧版的设备必须先卸载再安装，应用数据不保留。
+
+本轮没有重跑设备仪器测试；1.0.3 的测试证据仍然只对应 1.0.3 的调试签名 APK。
+
 ## 1.0.3 / versionCode 4：正式名称统一与 GitHub 交付（2026-10-27）
 
 用户确定正式名称为 **`l君のpdf转换`**：首字符是小写英文字母 `l`，中间为日文 `の`。
