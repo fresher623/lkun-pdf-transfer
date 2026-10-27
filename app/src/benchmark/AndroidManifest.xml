@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Only the benchmark variant needs visibility of its companion instrumentation APK. -->
+    <queries>
+        <package android:name="${applicationId}.test" />
+    </queries>
+</manifest>
