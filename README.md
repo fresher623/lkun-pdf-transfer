@@ -2,7 +2,9 @@
 
 按本目录《安卓图片合并PDF_App需求文档.md》实现的原生安卓测试版。支持 Android 8.0 / API 26 及以上。当前交付的 1.0.4 使用项目自己的发布密钥签名；尚未完成需求文档要求的实体机全部验收，不能作为正式发布认证。
 
-当前源码交付目标为 [fresher623/lkun-pdf-transfer](https://github.com/fresher623/lkun-pdf-transfer) 的 `main`，工程直接位于仓库根目录；迁移与远端核验状态见 [GitHub 交付说明](docs/GITHUB_DELIVERY.md) 和 [仓库迁移记录](docs/ITERATIONS.md#仓库迁移状态)。原番茄仓库的分支仅作为历史，后续由用户自行处理，本轮不修改或删除。版本和手机 APK 仍为 1.0.3，本次仓库迁移不重新构建或重跑测试。
+当前源码位于 [fresher623/lkun-pdf-transfer](https://github.com/fresher623/lkun-pdf-transfer) 的 `main`，工程直接位于仓库根目录，源码版本为 1.0.4 / code 5。历史手机测试按原版本记录，仓库核验状态见 [GitHub 交付说明](docs/GITHUB_DELIVERY.md) 和 [仓库迁移记录](docs/ITERATIONS.md#仓库迁移状态)。原番茄仓库的分支由用户自行处理，本轮不修改或删除。
+
+新增需求已整理为 [PDF 合并与 l君の百宝箱计划](docs/TOOLBOX_PLAN.md)，包括独立合并页面、后续解混淆工具整合和数据兼容；目前属于规划，当前 APK 功能不变。下次自行提交和推送见 [Git 推送教程](docs/GIT_GUIDE.md)。
 
 ## 安装与使用
 
