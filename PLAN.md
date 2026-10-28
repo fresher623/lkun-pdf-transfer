@@ -2,7 +2,7 @@
 
 日期：2026-10-27（Asia/Shanghai）
 
-状态：首次更名、构建、安装与真机验证保留原版本记录，独立仓库 `lkun-pdf-transfer` 的 main 根目录已完成迁移；当前源码为 1.0.4 / code 5。旧分支由用户自行处理。2026-10-28 新提出的功能规划单独见 [PDF 合并与百宝箱计划](docs/TOOLBOX_PLAN.md)，本文保留首次交付执行记录。
+状态：本文保留首次更名、构建、安装、真机验证与仓库迁移的历史执行记录。当前版本已为 1.1.1 / code 7，双入口菜单已安装并完成 17 项真机回归，源码已推送独立仓库 `lkun-pdf-transfer` 的 `main`。后续功能规划见 [PDF 合并与百宝箱计划](docs/TOOLBOX_PLAN.md)，当前交付与验证范围见 [交付说明](docs/GITHUB_DELIVERY.md) 和 [测试报告](docs/TEST_REPORT.md)。旧分支由用户自行处理。
 
 ## 目标
 

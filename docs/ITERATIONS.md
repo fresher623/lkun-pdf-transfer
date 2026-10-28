@@ -2,28 +2,32 @@
 
 本文对应项目的“迭代 md”，记录需求、实施、验证和剩余工作。功能差异见 [修改记录](CHANGELOG.md)，完整数据与验收矩阵见 [测试报告](TEST_REPORT.md)，本轮实施顺序见 [PLAN.md](../PLAN.md)。
 
-## 当前迭代九：1.1.1 双入口菜单候选（2026-10-28）
+## 当前迭代九：1.1.1 双入口菜单（2026-10-28）
 
-用户要求把“PDF 合并”和“合成 PDF”分成菜单入口。本轮采用“图片合成 PDF”明确图片来源；应用仍名为“l君のpdf转换”，版本候选 **1.1.1 / code 7**，包名继续为 `cn.local.imagepdf`。
+用户要求把“PDF 合并”和“合成 PDF”分成菜单入口。本轮用“图片合成 PDF”明确图片来源；应用仍名为“l君のpdf转换”，版本 **1.1.1 / code 7**，主包 `cn.local.imagepdf`。
 
-| 范围 | 本轮候选实现 | 验证状态 |
+| 范围 | 本轮实现 | 验证状态 |
 | --- | --- | --- |
-| 主菜单 | 默认进入双入口菜单，分别显示图片工具和合并工具；各入口可继续原草稿 / 任务 | 实现与候选打包完成，独立 QA 菜单 / 合并页画面已核对；完整回归仍待执行 |
-| 工具返回 | 两个工具回到菜单，不调用新建任务；未另存结果仍有离开确认 | 首个菜单用例与 QA 返回画面已有证据；完整草稿 / 结果保护回归仍待完成 |
-| 路由恢复 | 菜单 / 图片 / 合并的独立路由保存在 Activity 状态；普通前台 Intent 不重置所选工具 | 通知形状 cold Intent 由独立 QA 画面核对；warm Intent / 重建的最终自动化仍待执行 |
-| 原有功能 | 500 张图片、50 份 / 1000 页基础 PDF 及单重任务规则保持不变 | 不沿用 1.1.0 数字认定 1.1.1 已通过 |
-| 本轮交付 | `menu-main-build.log` 2m 6s 成功、lint 0 errors / 14 warnings；旧 core:test 为 up-to-date，候选 APK / 源码包已生成 | 最新测试组件与主应用更新均被安装器拒绝；最终 17 项尚未开始，手机仍为 1.1.0，本轮源码尚未推送 |
-| 后续范围 | 只推进双 PDF 工具导航 | 完整 M2 百宝箱整合、正式更名和 M3 解混淆尚未实施 |
+| 主菜单 | 默认双入口，可进入原草稿 / 当前任务 | 新增菜单自动化通过，真实主包菜单、两工具及返回画面均已核对 |
+| 工具返回 | 回菜单不调用新建任务，保留两类草稿及完整结果；未另存仍确认 | 已纳入最终 17 项流程回归，受控草稿 / 结果保护通过 |
+| 路由恢复 | Activity 保存菜单 / 图片 / 合并路由，普通 MAIN 不重置选择 | warm 工具 Intent 与重建自动化通过；cold 通知形状 Intent 另有 QA 画面，不等于实际通知点击 |
+| 原有流程 | 500 张图片、50 份 / 1000 页基础 PDF 与单重任务规则保持不变 | 本轮原有 15 项流程通过，含全选并导入 500 项和 500 / 501 边界；1000 页引擎成绩仍属 1.1.0 |
+| 构建 / 安装 | `menu-main-build.log` 2m 6s 成功，lint 0 errors / 14 warnings；旧 core:test 为 UP-TO-DATE | 主包已同签名重试更新为 1.1.1；已拉取 APK 大小 / SHA-256 与候选相同 |
+| 最终回归 | `build/menu-flow-device-unlocked.log` | **17 通过、0 失败、0 跳过，53.301 s**；解锁亮屏、每 5 秒普通 MAIN 前台辅助 |
+| 本轮交付 | 候选 APK / 源码包已生成，文档同步 | 功能 `239c33d`、测试修正 `c2c641a` 已普通推送 main 并核对；本轮验证文档随当前提交同步 |
+| 后续范围 | 仅推进双 PDF 工具导航 | 完整 M2 百宝箱整合、正式更名和 M3 解混淆尚未实施 |
 
-首轮设备流程已执行，`build/menu-flow-device-final.log` 为 **17 项：15 通过、2 失败、0 跳过，73.932 s**；通知路由 / 重建和合并排序 UI 两项等待超时，正在定位重测，未认定菜单已验收。测试组件 `menu-tests-build.log` 构建成功，16 s。
+首轮 `build/menu-flow-device-final.log` 为 **17 项：15 通过、2 失败、0 跳过，73.932 s**；通知路由 / 重建和合并排序 UI 等待超时。后续两次试跑在第 2 项非 MAIN 的 ActivityScenario 启动处阻塞，仅第 1 项完成；确认无处理任务后结束独立 QA，不计套件通过。移除周期前台辅助仍有相同现象，未据此认定生产崩溃。另一轮 `build/menu-flow-device-verified.log` 进入 MERGE 后在重建 / 关闭阶段阻塞，无完整通过统计。
 
-后续两次试跑均在第 2 项非 MAIN 的 ActivityScenario 启动处阻塞，仅第 1 项完成；测试执行者确认没有处理任务后结束独立 QA 包，不计为套件通过。移除周期前台辅助后仍有相同现象，根因未定。独立 ADB 按通知形状的显式 Intent 冷启动，已由受控 QA 截图目视核对合并页及返回菜单；下一轮自动化改用标准场景后发送 warm 工具 Intent，与冷启动画面证据分开记录。详见 [测试报告](TEST_REPORT.md)。生产主包未因此改动，测试夹具的重建日志 `menu-tests-retry-build.log` 为 8 s 成功。
+AndroidX 字节码诊断显示，ActivityScenario 对启动 Intent 与 Activity 当前 Intent 的 action / categories 等字段做匹配，失配会忽略生命周期事件；证据保留于 `build/menu-scenario-inspection/`。测试驱动改为标准 MAIN 场景后发送 warm 工具 Intent，在重建 / 关闭前恢复普通 MAIN 并断言仍在所选工具。合并排序点击增加可见裁切与 600 ms 稳定等待。上述为测试驱动修正，生产路由与转换实现未因此改动；冷启动由独立 QA 画面分开核对。
 
-最新 `menu-routing-tests-build.log` 为 7 s 成功，仅包含测试夹具调整，生产主包未因试跑改变。测试组件 `cn.local.imagepdf.menuqa.benchmark.test`（显示名“l君のpdf转换 · 测试组件”）和主应用更新均返回 `INSTALL_FAILED_ABORTED: User rejected permissions`；这是安装器返回的失败结果，不推断具体拒绝原因。`build/menu-flow-device-complete.log` 对应的最终 17 项尚未启动，手机仍为 1.1.0 / code 6。候选 APK 已复制到手机下载目录并核对同一 SHA-256，可供用户在手机允许后手动安装；当前没有 1.1.1 主包安装成功证据，本轮源码尚未推送。
+期间测试组件和主包均曾返回 `INSTALL_FAILED_ABORTED: User rejected permissions`。候选包先复制至手机下载目录并核对 SHA-256，该阶段不是安装成功。用户允许后主包重试 Success，手机为 1.1.1 / code 7，lastUpdateTime 22:57:36，firstInstallTime 仍为 20:39:34；拉取 APK 为 13,480,179 bytes，SHA-256 与候选一致。MAIN + CLEAR_TASK 启动 Status ok、COLD 496 ms；只重置 Activity 栈，未卸载 / 清私有数据，未逐项读取旧草稿。
 
-本轮菜单不是安全修复。1.1.0 主包的 vivo“高危病毒／危险行为程序”截图和未确认原因的状态仍保留在 [安全记录](SECURITY_REVIEW.md)。以下迭代八及其通过数属于历史 1.1.0，不能作为新菜单的设备验收。
+`build/menu-flow-device-regression.log` 的 15 项试跑在排序项遇锁屏、UI 节点为空并超时；接着两项通过，MergeRuntime 仅到场景启动，未开始导入即结束受控 QA，其余未执行，不能写成完整 15 项结果。最新驱动更新也曾再次被拒；用户解锁并允许后 `build/menu-unlocked-test-install.log` 安装 Success，随后完整 **17 项通过，53.301 s**。运行每 5 秒发送普通 MAIN，测试执行者仅发送唤醒键保持屏幕亮起，未修改电源或安全设置；这是前台受控条件，不等于后台 / 熄屏验收。
 
-<!-- menu-1.1.1-evidence: await actual build, route tests, installation and delivery records -->
+本轮菜单不是安全修复。1.1.0 主包的 vivo“高危病毒／危险行为程序”截图和未确认原因的状态仍保留在 [安全记录](SECURITY_REVIEW.md)。以下迭代八及其通过数属于历史 1.1.0，不挪作新引擎或性能重测。完整证据见 [测试报告](TEST_REPORT.md)。
+
+<!-- menu-1.1.1-evidence: 17 passed 53.301s; installed hash verified; production menu visual verified; source 239c33d/c2c641a pushed and verified; verification docs synchronized in current commit; vivo unresolved -->
 
 ## 迭代八：1.1.0 候选的 M0 / M1 实现（2026-10-28，历史记录）
 

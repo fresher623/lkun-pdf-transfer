@@ -2,47 +2,58 @@
 
 更新日期：2026-10-28（Asia/Shanghai）。以下保留各版本已执行记录；新增结果按实际版本区分。需求基线：文件夹内《安卓图片合并 PDF App 需求文档》V1.0，以及后续独立 PDF 合并需求。
 
-## 当前 1.1.1 / code 7 候选：双入口菜单
+## 当前 1.1.1 / code 7：双入口菜单
 
-本轮候选增加独立主菜单：“图片合成 PDF”与“PDF 合并”各自进入工具页，工具返回菜单不新建或清空任务。应用名、包名和转换引擎保持现有规则；未整合解混淆。本节只记录 1.1.1 的实际验证，不把下文 1.1.0 的通过数挪到本版本。
+本轮增加独立主菜单：“图片合成 PDF”与“PDF 合并”各自进入工具页，返回菜单不新建或清空任务。菜单实现、统一构建、17 项功能回归、主包安装及真实主包两工具往返核对完成，功能与测试源码已推送 main 并核对；本轮验证文档随当前提交同步。应用名称仍为“l君のpdf转换”，未整合解混淆；不把旧版本引擎 / 性能数字挪为本轮重测。
 
-| 检查 | 当前状态 | 范围与限制 |
+| 检查 | 实际结果 | 范围与限制 |
 | --- | --- | --- |
-| 首轮统一构建 / lint | BUILD SUCCESSFUL，2m 6s；lint 0 errors / 14 warnings | `menu-main-build.log`：debug / release / benchmark 与 lint 成功；旧 core:test 为 UP-TO-DATE，不称本轮重新执行旧 19 项 |
-| 菜单 / 路由设备回归 | 首轮 2 项中 1 通过、1 失败；后续夹具试跑中断 | 最新夹具已重编，但测试组件更新被安装器拒绝；最终 17 项尚未开始，没有据单项或截图认定全部路由通过 |
-| 旧工具流程回归 | 首轮 15 项中 14 通过、1 失败，待修复重测 | 失败为合并排序 UI；与新增菜单合计首轮 17 项：15 通过、2 失败、0 跳过。1.1.0 的通过数与 1000 页复核仍归属旧版 |
-| 测试组件更新 | 失败：`INSTALL_FAILED_ABORTED: User rejected permissions` | `cn.local.imagepdf.menuqa.benchmark.test`，显示名“l君のpdf转换 · 测试组件”；`menu-routing-tests-build.log` 构建成功，7 s，不能据此称已安装 |
-| 主包安装与启动 | 失败：`INSTALL_FAILED_ABORTED: User rejected permissions`，手机仍为 1.1.0 / code 6 | `build/menu-main-install.log`；再次查询 firstInstallTime / lastUpdateTime 均为 2026-10-28 20:39:34，未取得 1.1.1 安装成功证据；未卸载 / 清数据 |
-| 候选打包 | 已生成并核对两 APK 的大小与 SHA-256 | 见下表；源码 ZIP 随文档同步重打，不写会变动的 ZIP 大小 / 哈希 |
-| GitHub | 1.1.1 尚未推送 | 工作保留本机；提交与远端核验按后续实际执行补充 |
-| 安全状态 | 本次菜单不是安全修复 | 1.1.0 的 vivo 高危告警原因仍未确认，不因新版本号或功能通过认定告警解除 |
-
-本轮候选文件（仅说明本机文件身份，不证明设备更新或安全通过）：
+| 主包统一构建 / lint | BUILD SUCCESSFUL，2m 6s；lint 0 errors / 14 warnings | `menu-main-build.log`：debug / release / benchmark 与 lint 成功；旧 core:test 为 UP-TO-DATE，不称本轮重新执行旧 19 项 |
+| 最终设备流程回归 | **17 通过、0 失败、0 跳过，53.301 s** | `build/menu-flow-device-unlocked.log`，隔离 QA 合成夹具；解锁亮屏，每 5 秒普通 MAIN 前台辅助，不代表后台 / 熄屏验收 |
+| 新增菜单 / 路由 | 2 项通过，计入上述 17 项 | 默认菜单、工具往返、草稿保护、warm 工具 Intent、普通 MAIN 保持当前选择及重建；cold 通知形状 Intent 另以 QA 画面核对 |
+| 原有工具流程 | 15 项通过，计入上述 17 项 | 合并 UI 3、MergeRuntime 1、残留取消服务 1、Pipeline 4、单批导入 1、AppFlow 1、文件夹 4，含实际全选并导入 500 项及 500 / 501 边界 |
+| 最新测试驱动 | 构建成功 8 s；解锁允许后安装 Success | `menu-final-routing-tests-build.log` 与 `build/menu-unlocked-test-install.log`；已拉取组件 APK 与最新构建 SHA-256 一致（`verification.json`：installedTestComponentMatchesBuilt=true），此前拒绝保留为历史 |
+| 主包安装与启动 | 用户允许后重试 Success，1.1.1 / code 7；Status ok，COLD 496 ms | `build/menu-main-install-retry.log`、`build/menu-installed-check/after-package.txt`；lastUpdateTime 22:57:36，firstInstallTime 20:39:34 保持，未卸载 / 清数据，未逐项读取旧私有草稿 |
+| 真实主包导航 | 菜单 → PDF 合并 → 菜单、菜单 → 图片合成 PDF → 菜单均完成 | 合并工具使用工具栏返回，图片工具使用系统返回键；`build/menu-installed-check/verification.json` 的 manualMainNavigationChecks 及下述三张截图；只核对空白草稿，最后停留主菜单 |
+| 安装包身份 | 已安装 APK 拉取后核对一致，13,480,179 bytes | `build/menu-installed-check/installed-after.apk` 与候选 SHA-256 相同；仅证明文件身份，不证明安全 |
+| 本地交付物 | APK / 源码包已生成，文档同步 | 两 APK 身份见下表；源码 ZIP 随最终文档重打，以最终 `dist/SHA256.json` 为准 |
+| GitHub | 功能与测试源码已普通推送 main 并核对 | 功能 `239c33d`、导航测试修正 `c2c641a`；源码推送时远端为 `c2c641a8192689105acda6168280d6a0488cf9f3`，本轮验证文档随当前提交同步 |
+| 安全状态 | 本次菜单不是安全修复 | 1.1.0 的 vivo 高危告警原因仍未确认，不因安装或功能通过认定告警解除 |
 
 | 文件 | 字节数 | SHA-256 |
 | --- | --- | --- |
-| `dist/l君のpdf转换-1.1.1-test.apk` | 13,480,179 | `19643b467bc7c2f25b10f68fde74581e5500dbd018b039358cc8702af1da2459` |
+| `dist/l君のpdf转换-1.1.1-test.apk` 与拉取的已安装 APK | 13,480,179 | `19643b467bc7c2f25b10f68fde74581e5500dbd018b039358cc8702af1da2459` |
 | `dist/l君のpdf转换-1.1.1-release.apk` | 9,540,475 | `326bc31f29b920b0a96f158661472d876085eec62a83a5ea367d4d7fad05e311` |
 
-最新夹具构建 `menu-routing-tests-build.log` 为 BUILD SUCCESSFUL，7 s。最新测试组件更新被安装器拒绝（`INSTALL_FAILED_ABORTED: User rejected permissions`），因此修正夹具后的 `build/menu-flow-device-complete.log` 最终 17 项回归尚未启动，未取得通过统计；不把构建成功、已有 QA 截图或旧版本成绩记为本轮整套通过。
+### 安装、真实主包画面与最终通过范围
 
-主包安装失败后，候选文件已复制到手机 `/sdcard/Download/lkun-pdf-1.1.1-menu-19643b46.apk`，手机端 `sha256sum` 与本机候选一致：`19643b467bc7c2f25b10f68fde74581e5500dbd018b039358cc8702af1da2459`。这只证明文件已传到下载目录，不证明已经安装。`build/menu-installed-check/verification.json` 记录两项安装失败、候选身份、手机文件位置和视觉核对范围；允许安装后的版本、主包画面和完整回归仍需继续确认。
+此前测试组件和主包安装均返回 `INSTALL_FAILED_ABORTED: User rejected permissions`，主包失败日志为 `build/menu-main-install.log`；不推断安装器具体拒绝原因，也不把原日志改为成功。被拒后，候选包曾复制到手机 `/sdcard/Download/lkun-pdf-1.1.1-menu-19643b46.apk` 并核对同一 SHA-256，文件复制本身不是安装。
 
-测试组件构建日志 `menu-tests-build.log` 已记录 BUILD SUCCESSFUL，16 s。首轮 `build/menu-flow-device-final.log` 已结束：**17 项中 15 通过、2 失败、0 跳过，73.932 s**。失败项为 `ToolMenuInstrumentedTest.notificationToolIntentsAndRecreationPreserveSelectedTool`（超时）及 `PdfMergeUiInstrumentedTest.orderRemoveAndClearDispatchStableIdsAndClearRequiresConfirmation`（点击下移后的等待超时）。根因、修复和后续重测结果按实际证据补充，不能把所有超时先归因于测试工具或设备。文件名中的 final 不代表验收通过，构建成功也不能替代设备执行结果。
+用户明确允许后，`build/menu-main-install-retry.log` 返回 Success。设备为 1.1.1 / code 7，lastUpdateTime 为 2026-10-28 22:57:36，firstInstallTime 仍为 20:39:34；拉取 APK 与上表候选一致。标准 MAIN + CLEAR_TASK 启动 Status ok、COLD 496 ms。CLEAR_TASK 只重置 Activity 栈，本轮没有卸载或清除私有数据；安装时间保持不是所有旧草稿逐项迁移已验证的证据。
 
-### 菜单试跑中断与独立画面核对
+真实主包截图 `build/menu-installed-check/main-menu.png`、`main-merge.png` 和 `main-images.png` 均已目视核对：两个菜单卡片完整；点击“打开 PDF 合并”可见合并页和“返回菜单”，工具栏返回后重见主菜单；点击“打开图片合成 PDF”可见图片工具和“返回菜单”，系统返回键回到主菜单。只使用空白草稿画面，未读取个人文件或私有草稿，最后手机保留在主菜单。操作记录见 `verification.json` 的 `manualMainNavigationChecks`。
 
-后续只调整测试夹具，生产主包仍对应 `menu-main-build.log` 的成功构建；`menu-tests-retry-build.log` 构建成功，8 s。
+最新驱动先构建 8 s 成功，更新一度被拒（`build/menu-final-test-install.log`）；用户解锁并允许后 `build/menu-unlocked-test-install.log` 安装 Success。随后 `build/menu-flow-device-unlocked.log` 输出 **Time: 53.301 / OK (17 tests)**，无失败或跳过，包含新增 2 项导航和原有 15 项流程。每 5 秒发送普通 MAIN 作为前台辅助，测试执行者仅发送 KEYCODE_WAKEUP 保持已解锁屏幕亮起，未修改电源或安全设置。
 
-| 记录 | 实际完成范围 | 边界 |
+本轮测试使用隔离 QA 包与合成样本，文件夹全选使用受控授权夹具；不代表真实系统授权流程、所有 SAF 提供方、后台 / 熄屏、4 GB、真实相机大图或性能长测已通过。warm 工具 Intent 自动化和下面的 cold 画面证据分开记录，不声称实际运行通知点击或所有系统重建情况已全面验收。1.1.0 的 1000 页引擎与独立复核未在本轮重跑，保持下文历史版本归属。
+
+### 首轮失败、场景阻塞与安装拒绝历史
+
+这些是本轮已经发生的真实记录，不因最终通过删除。测试组件首轮 `menu-tests-build.log` 构建 16 s 成功，`menu-tests-retry-build.log` 构建 8 s、`menu-routing-tests-build.log` 构建 7 s；它们只证明各次组件构建，不代替设备执行结果。生产主包始终对应 `menu-main-build.log`，后续只修正测试驱动。
+
+| 记录 | 实际完成范围 | 诊断与边界 |
 | --- | --- | --- |
-| `build/menu-flow-device-accepted.log` | 计划 17 项，第 1 项通过；第 2 项非 MAIN 的 ActivityScenario 启动长时间未返回，后续 15 项未执行 | 测试执行者确认未启动处理任务后，仅结束独立 menuqa 测试包。runner 末尾虽为 Process crashed，本轮是主动结束试跑，不能写成生产应用崩溃或整套通过；accepted 文件名不代表验收 |
-| `build/menu-routing-device-no-assistance.log` | 移除周期前台辅助后，第 1 项通过；第 2 项同样停在非 MAIN 场景启动，随后试跑被结束 | 没有完整 JUnit 套件通过结果；不能据此确定周期辅助、测试框架或生产路由中的具体根因 |
-| 独立 ADB 导航画面 | 使用明确组件和 `tool=merge`、不带 MAIN / category 的 Intent 冷启动独立 QA 应用；已目视确认进入 PDF 合并，返回后显示双入口菜单 | `build/menu-visual-check/cold-merge.png` 与 `menu-home.png` 为受控空白 QA 草稿画面；不涉及个人文件，也不等于实际通知点击、处理中的通知返回或全部重建回归 |
+| `build/menu-flow-device-final.log` | **17 项：15 通过、2 失败、0 跳过，73.932 s** | `notificationToolIntentsAndRecreationPreserveSelectedTool` 与合并排序 `orderRemoveAndClearDispatchStableIdsAndClearRequiresConfirmation` 等待超时；文件名 final 不代表当轮通过 |
+| `build/menu-flow-device-accepted.log` | 计划 17 项，第 1 项通过；第 2 项非 MAIN 的 ActivityScenario 启动阻塞，后续 15 项未执行 | 确认未启动处理任务后主动结束独立 QA；raw Process crashed 不据此记为生产崩溃，accepted 文件名不代表通过 |
+| `build/menu-routing-device-no-assistance.log` | 移除周期前台辅助后，第 1 项通过；第 2 项同样启动阻塞，试跑被结束 | 没有完整 JUnit 通过结果；不能单凭这一轮认定前台辅助是根因 |
+| `build/menu-flow-device-verified.log` | 进入首个新导航用例，可见 PDF 合并 / 返回菜单、保存路由 MERGE；随后重建 / 关闭阻塞 | 仅导航、未创建处理任务时结束独立 QA，无完整用例或套件统计；画面和路由值不是当轮重建通过 |
+| 独立 ADB 冷启动画面 | 明确组件与 `tool=merge`、不带 MAIN / category 的 Intent 冷启动 QA，确认合并页及返回菜单 | `build/menu-visual-check/cold-merge.png`、`menu-home.png` 为受控空白 QA 草稿；不等于实际通知点击或处理中的通知返回 |
+| `build/menu-flow-device-regression.log` | 计划 15 项：第 1 排序项超时，第 2 锁定和第 3 预览通过，第 4 MergeRuntime 仅开始场景启动，后续未执行 | 排序时手机锁屏 / Asleep、UI 节点为空；未到 MergeRuntime 导入阶段，在无处理任务的启动阶段结束 QA，不写成完整 15 项或纯产品失败 |
+| 安装器拒绝与后续重试 | 组件 / 主包曾多次返回 INSTALL_FAILED_ABORTED；组件中间重装曾 Success，最新驱动更新又被拒 | 最终用户解锁并允许后的 `menu-unlocked-test-install.log` 才是最新驱动成功安装证据；失败、成功按各轮分别保留 |
 
-下一轮自动化将用标准 MAIN 场景启动，再发送前台工具 Intent，明确覆盖 warm 通知路由；冷启动的 Intent 画面证据与自动化统计分开记录。合并排序测试增加祖先可见裁切与 600 ms 稳定坐标等待；这属于测试夹具调整，没有为使测试通过修改生产路由或转换逻辑。最终结果仍待手机允许测试组件更新后启动重测并取得完整日志；当前最新组件安装已经失败，不能按等待或成功记账。
+AndroidX 的本地字节码检查保留于 `build/menu-scenario-inspection/scenario-intent-match.txt` 与 `scenario-lifecycle-match.txt`：ActivityScenario 比较启动 Intent 与 Activity 当前 Intent 的 action、categories 等字段，失配会忽略生命周期事件。这支持重建 / 关闭阶段的测试驱动匹配问题诊断，不将每次超时都归因于同一原因。最终驱动从标准 MAIN 场景开始，再发送 warm 工具 Intent；重建 / 关闭前发送普通 MAIN 并断言仍在原工具，随后验证重建。合并排序 helper 增加祖先可见裁切与 600 ms 坐标稳定等待。没有为使测试通过改动生产路由或转换逻辑。
 
-<!-- menu-1.1.1-evidence: candidate packages built; test-component and main installs rejected; final 17 not started; phone remains 1.1.0; 1.1.1 not pushed -->
+<!-- menu-1.1.1-evidence: final 17 passed 53.301s; installed hash and production menu/tools/back visually verified; source 239c33d/c2c641a pushed and verified; verification docs synchronized in current commit; vivo unresolved -->
 
 ## 历史 1.1.0 / code 6：M0 / M1 状态
 
