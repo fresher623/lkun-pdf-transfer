@@ -72,6 +72,13 @@ def main():
         shutil.copyfile(candidate, evidence / candidate.name)
     for candidate in sorted(root.glob('merge-*-build.log')):
         shutil.copyfile(candidate, evidence / candidate.name)
+    for candidate in sorted(root.glob('menu-*-build.log')):
+        shutil.copyfile(candidate, evidence / candidate.name)
+    for candidate in sorted((root / 'build').glob('menu-*-device*.log')):
+        shutil.copyfile(candidate, evidence / candidate.name)
+    menu_install = root / 'build/menu-installed-check/verification.json'
+    if menu_install.is_file():
+        shutil.copyfile(menu_install, evidence / 'menu-install-verification.json')
     merge_evidence = root / 'build/merge-device-evidence'
     if merge_evidence.is_dir():
         for pattern in ('summary.txt', 'memory.csv', 'independent-validation.json'):
@@ -103,7 +110,9 @@ def main():
         'See docs/TEST_REPORT.md for current executed and pending checks.\n'
         'Functional passes do not certify security. When present, docs/SECURITY_REVIEW.md '
         'records outstanding alerts; local packaging does not resolve or override them.\n'
-        'merge-* files record current 1.1.0 synthetic merge/device checks when present.\n'
+        'merge-* files record historical 1.1.0 synthetic merge/device checks when present.\n'
+        'menu-* files record the 1.1.1 menu build/device checks when present; '
+        'pending checks remain pending in docs/TEST_REPORT.md.\n'
         'A device test failure log remains a failure even when a later fixed run passes.\n'
         'Historical 1.0.3 install/start/hash verification: release-1.0.3-verification.json.\n'
         'Historical 1.0.3 UI regression: device-folder-1.0.3-test.log '

@@ -94,7 +94,7 @@ private data class MergePreview(val path: String, val name: String, val pages: I
 /** An independent merge flow; returning to the image tool never clears either draft. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PdfMergeScreen(state: MergeState, actions: MergeActions) {
+fun PdfMergeScreen(state: MergeState, actions: MergeActions, onOpenMenu: (() -> Unit)? = null) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) MergeDarkColors else MergeLightColors, typography = Typography()) {
         var showResult by rememberSaveable(state.result?.filePath) { mutableStateOf(state.result != null) }
         var clearConfirm by remember { mutableStateOf(false) }
@@ -102,10 +102,12 @@ fun PdfMergeScreen(state: MergeState, actions: MergeActions) {
         var leaveConfirm by remember { mutableStateOf(false) }
         var preview by remember { mutableStateOf<MergePreview?>(null) }
         LaunchedEffect(state.importing) { if (state.importing) showResult = false }
-        val returnToImages = {
-            if (state.result?.exported == false) leaveConfirm = true else actions.returnToImages()
+        val returnLabel = if (onOpenMenu != null) "返回菜单" else "返回图片工具"
+        val leaveTool: () -> Unit = { if (onOpenMenu != null) onOpenMenu() else actions.returnToImages() }
+        val requestReturn = {
+            if (state.result?.exported == false) leaveConfirm = true else leaveTool()
         }
-        BackHandler(enabled = preview == null) { returnToImages() }
+        BackHandler(enabled = preview == null) { requestReturn() }
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -113,8 +115,8 @@ fun PdfMergeScreen(state: MergeState, actions: MergeActions) {
                 TopAppBar(
                     title = { Text("PDF 合并", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     navigationIcon = {
-                        TextButton(onClick = { returnToImages() }, modifier = Modifier.heightIn(min = 48.dp)) {
-                            Text("返回图片工具", fontSize = 12.sp, maxLines = 2, modifier = Modifier.semantics { contentDescription = "返回图片工具，保留合并草稿" })
+                        TextButton(onClick = { requestReturn() }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(returnLabel, fontSize = 12.sp, maxLines = 2, modifier = Modifier.semantics { contentDescription = "$returnLabel，保留合并草稿" })
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -160,9 +162,9 @@ fun PdfMergeScreen(state: MergeState, actions: MergeActions) {
         )
         if (leaveConfirm) MergeConfirm(
             title = "合并结果尚未另存",
-            message = "完整 PDF 和合并草稿会继续保留。返回图片工具后，可再次进入 PDF 合并查看、另存或分享。",
-            confirm = "返回图片工具",
-            onConfirm = { leaveConfirm = false; actions.returnToImages() }, onDismiss = { leaveConfirm = false },
+            message = "完整 PDF 和合并草稿会继续保留。${returnLabel}后，可再次进入 PDF 合并查看、另存或分享。",
+            confirm = returnLabel,
+            onConfirm = { leaveConfirm = false; leaveTool() }, onDismiss = { leaveConfirm = false },
         )
         when {
             state.error != null -> AlertDialog(

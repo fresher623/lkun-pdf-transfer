@@ -129,12 +129,18 @@ private val DarkColors = darkColorScheme(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageRepository) {
+fun ImagePdfApp(
+    state: AppUiState,
+    actions: AppActions,
+    repository: ImageRepository,
+    onOpenMenu: (() -> Unit)? = null,
+) {
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors, typography = Typography()) {
         var clearConfirm by remember { mutableStateOf(false) }
         var newConfirm by remember { mutableStateOf(false) }
         var leaveConfirm by remember { mutableStateOf(false) }
         var exitConfirm by remember { mutableStateOf(false) }
+        var menuConfirm by remember { mutableStateOf(false) }
         var imagePreview by remember { mutableStateOf<ImageEntry?>(null) }
         var pdfPreview by remember { mutableStateOf(false) }
         var showLicenses by remember { mutableStateOf(false) }
@@ -151,8 +157,12 @@ fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageReposit
                 else -> actions.navigate(AppScreen.HOME)
             }
         }
+        val requestMenu: () -> Unit = {
+            if (state.result?.exported == false) menuConfirm = true else onOpenMenu?.invoke()
+        }
         BackHandler(enabled = state.screen != AppScreen.HOME && imagePreview == null && !pdfPreview) { goBack() }
-        BackHandler(enabled = state.screen == AppScreen.HOME && state.task == null && state.result?.exported == false) { exitConfirm = true }
+        BackHandler(enabled = onOpenMenu != null && state.screen == AppScreen.HOME && imagePreview == null && !pdfPreview) { requestMenu() }
+        BackHandler(enabled = onOpenMenu == null && state.screen == AppScreen.HOME && state.task == null && state.result?.exported == false) { exitConfirm = true }
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -162,12 +172,13 @@ fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageReposit
                         PaperSymbol(Modifier.size(28.dp))
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text(if (state.screen == AppScreen.HOME) "l君のpdf转换" else screenTitle(state.screen), fontWeight = FontWeight.Bold)
-                            if (state.screen == AppScreen.HOME) Text("图片转 PDF", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (state.screen == AppScreen.HOME) "图片合成 PDF" else screenTitle(state.screen), fontWeight = FontWeight.Bold)
+                            if (state.screen == AppScreen.HOME) Text("每张图片一页", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     } },
                     navigationIcon = {
                         if (state.screen != AppScreen.HOME) TextButton(onClick = { goBack() }) { Text("返回") }
+                        else if (onOpenMenu != null) TextButton(onClick = requestMenu, modifier = Modifier.heightIn(min = 48.dp)) { Text("返回菜单") }
                     },
                     actions = { if (state.screen == AppScreen.HOME) Text("本地处理", modifier = Modifier.padding(end = 18.dp), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium) },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -209,6 +220,7 @@ fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageReposit
         if (newConfirm) ConfirmDialog("开始新任务？", "当前图片和设置将被清空。尚未另存的 PDF 建议先保存；已生成的应用内文件会保留。", "开始新任务", { newConfirm = false; actions.newTask() }, { newConfirm = false })
         if (leaveConfirm) ConfirmDialog("PDF 尚未另存", "应用内的完整 PDF 会保留，可从首页继续查看。也可以先返回完成页另存或分享。", "返回首页", { leaveConfirm = false; actions.navigate(AppScreen.HOME) }, { leaveConfirm = false })
         if (exitConfirm) ConfirmDialog("退出前另存 PDF？", "当前 PDF 尚未另存，退出后仍会保留在应用内。建议先另存到自己选择的位置。", "退出应用", { exitConfirm = false; activity?.finish() }, { exitConfirm = false })
+        if (menuConfirm) ConfirmDialog("PDF 尚未另存", "完整 PDF 和图片草稿会继续保留。返回菜单后，可再次进入图片合成 PDF 查看、另存或分享。", "返回菜单", { menuConfirm = false; onOpenMenu?.invoke() }, { menuConfirm = false })
         if (state.pendingImportCount > 0) {
             val remaining = (500 - state.images.size).coerceAtLeast(0)
             AlertDialog(
@@ -244,13 +256,6 @@ private fun screenTitle(screen: AppScreen): String = when (screen) {
 @Composable
 private fun HomeScreen(state: AppUiState, actions: AppActions, onNew: () -> Unit, onLicenses: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("PDF 合并", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("多份 PDF 按顺序合成，保留原有页面尺寸。", style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = actions::openMerge, modifier = Modifier.heightIn(min = 48.dp)) { Text("打开 PDF 合并 →") }
-            }
-        }
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer) {
             Column(Modifier.fillMaxWidth().padding(28.dp)) {
                 Text("把零散的图片，\n收成一份 PDF。", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)

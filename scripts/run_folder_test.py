@@ -88,7 +88,7 @@ def main():
                     next_foreground = time.monotonic() + args.foreground_every
                 log = adb('shell', 'cat', remote)
                 args.output.write_text(log, encoding='utf-8')
-                stages = [line for line in log.splitlines() if 'Folder UI:' in line or 'Merge UI:' in line]
+                stages = [line for line in log.splitlines() if any(marker in line for marker in ('Folder UI:', 'Merge UI:', 'Menu UI:'))]
                 for stage in stages[printed:]:
                     print(stage, flush=True)
                 printed = len(stages)

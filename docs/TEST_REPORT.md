@@ -2,7 +2,49 @@
 
 更新日期：2026-10-28（Asia/Shanghai）。以下保留各版本已执行记录；新增结果按实际版本区分。需求基线：文件夹内《安卓图片合并 PDF App 需求文档》V1.0，以及后续独立 PDF 合并需求。
 
-## 当前 1.1.0 / code 6 候选：M0 / M1 状态
+## 当前 1.1.1 / code 7 候选：双入口菜单
+
+本轮候选增加独立主菜单：“图片合成 PDF”与“PDF 合并”各自进入工具页，工具返回菜单不新建或清空任务。应用名、包名和转换引擎保持现有规则；未整合解混淆。本节只记录 1.1.1 的实际验证，不把下文 1.1.0 的通过数挪到本版本。
+
+| 检查 | 当前状态 | 范围与限制 |
+| --- | --- | --- |
+| 首轮统一构建 / lint | BUILD SUCCESSFUL，2m 6s；lint 0 errors / 14 warnings | `menu-main-build.log`：debug / release / benchmark 与 lint 成功；旧 core:test 为 UP-TO-DATE，不称本轮重新执行旧 19 项 |
+| 菜单 / 路由设备回归 | 首轮 2 项中 1 通过、1 失败；后续夹具试跑中断 | 最新夹具已重编，但测试组件更新被安装器拒绝；最终 17 项尚未开始，没有据单项或截图认定全部路由通过 |
+| 旧工具流程回归 | 首轮 15 项中 14 通过、1 失败，待修复重测 | 失败为合并排序 UI；与新增菜单合计首轮 17 项：15 通过、2 失败、0 跳过。1.1.0 的通过数与 1000 页复核仍归属旧版 |
+| 测试组件更新 | 失败：`INSTALL_FAILED_ABORTED: User rejected permissions` | `cn.local.imagepdf.menuqa.benchmark.test`，显示名“l君のpdf转换 · 测试组件”；`menu-routing-tests-build.log` 构建成功，7 s，不能据此称已安装 |
+| 主包安装与启动 | 失败：`INSTALL_FAILED_ABORTED: User rejected permissions`，手机仍为 1.1.0 / code 6 | `build/menu-main-install.log`；再次查询 firstInstallTime / lastUpdateTime 均为 2026-10-28 20:39:34，未取得 1.1.1 安装成功证据；未卸载 / 清数据 |
+| 候选打包 | 已生成并核对两 APK 的大小与 SHA-256 | 见下表；源码 ZIP 随文档同步重打，不写会变动的 ZIP 大小 / 哈希 |
+| GitHub | 1.1.1 尚未推送 | 工作保留本机；提交与远端核验按后续实际执行补充 |
+| 安全状态 | 本次菜单不是安全修复 | 1.1.0 的 vivo 高危告警原因仍未确认，不因新版本号或功能通过认定告警解除 |
+
+本轮候选文件（仅说明本机文件身份，不证明设备更新或安全通过）：
+
+| 文件 | 字节数 | SHA-256 |
+| --- | --- | --- |
+| `dist/l君のpdf转换-1.1.1-test.apk` | 13,480,179 | `19643b467bc7c2f25b10f68fde74581e5500dbd018b039358cc8702af1da2459` |
+| `dist/l君のpdf转换-1.1.1-release.apk` | 9,540,475 | `326bc31f29b920b0a96f158661472d876085eec62a83a5ea367d4d7fad05e311` |
+
+最新夹具构建 `menu-routing-tests-build.log` 为 BUILD SUCCESSFUL，7 s。最新测试组件更新被安装器拒绝（`INSTALL_FAILED_ABORTED: User rejected permissions`），因此修正夹具后的 `build/menu-flow-device-complete.log` 最终 17 项回归尚未启动，未取得通过统计；不把构建成功、已有 QA 截图或旧版本成绩记为本轮整套通过。
+
+主包安装失败后，候选文件已复制到手机 `/sdcard/Download/lkun-pdf-1.1.1-menu-19643b46.apk`，手机端 `sha256sum` 与本机候选一致：`19643b467bc7c2f25b10f68fde74581e5500dbd018b039358cc8702af1da2459`。这只证明文件已传到下载目录，不证明已经安装。`build/menu-installed-check/verification.json` 记录两项安装失败、候选身份、手机文件位置和视觉核对范围；允许安装后的版本、主包画面和完整回归仍需继续确认。
+
+测试组件构建日志 `menu-tests-build.log` 已记录 BUILD SUCCESSFUL，16 s。首轮 `build/menu-flow-device-final.log` 已结束：**17 项中 15 通过、2 失败、0 跳过，73.932 s**。失败项为 `ToolMenuInstrumentedTest.notificationToolIntentsAndRecreationPreserveSelectedTool`（超时）及 `PdfMergeUiInstrumentedTest.orderRemoveAndClearDispatchStableIdsAndClearRequiresConfirmation`（点击下移后的等待超时）。根因、修复和后续重测结果按实际证据补充，不能把所有超时先归因于测试工具或设备。文件名中的 final 不代表验收通过，构建成功也不能替代设备执行结果。
+
+### 菜单试跑中断与独立画面核对
+
+后续只调整测试夹具，生产主包仍对应 `menu-main-build.log` 的成功构建；`menu-tests-retry-build.log` 构建成功，8 s。
+
+| 记录 | 实际完成范围 | 边界 |
+| --- | --- | --- |
+| `build/menu-flow-device-accepted.log` | 计划 17 项，第 1 项通过；第 2 项非 MAIN 的 ActivityScenario 启动长时间未返回，后续 15 项未执行 | 测试执行者确认未启动处理任务后，仅结束独立 menuqa 测试包。runner 末尾虽为 Process crashed，本轮是主动结束试跑，不能写成生产应用崩溃或整套通过；accepted 文件名不代表验收 |
+| `build/menu-routing-device-no-assistance.log` | 移除周期前台辅助后，第 1 项通过；第 2 项同样停在非 MAIN 场景启动，随后试跑被结束 | 没有完整 JUnit 套件通过结果；不能据此确定周期辅助、测试框架或生产路由中的具体根因 |
+| 独立 ADB 导航画面 | 使用明确组件和 `tool=merge`、不带 MAIN / category 的 Intent 冷启动独立 QA 应用；已目视确认进入 PDF 合并，返回后显示双入口菜单 | `build/menu-visual-check/cold-merge.png` 与 `menu-home.png` 为受控空白 QA 草稿画面；不涉及个人文件，也不等于实际通知点击、处理中的通知返回或全部重建回归 |
+
+下一轮自动化将用标准 MAIN 场景启动，再发送前台工具 Intent，明确覆盖 warm 通知路由；冷启动的 Intent 画面证据与自动化统计分开记录。合并排序测试增加祖先可见裁切与 600 ms 稳定坐标等待；这属于测试夹具调整，没有为使测试通过修改生产路由或转换逻辑。最终结果仍待手机允许测试组件更新后启动重测并取得完整日志；当前最新组件安装已经失败，不能按等待或成功记账。
+
+<!-- menu-1.1.1-evidence: candidate packages built; test-component and main installs rejected; final 17 not started; phone remains 1.1.0; 1.1.1 not pushed -->
+
+## 历史 1.1.0 / code 6：M0 / M1 状态
 
 名称仍为 **l君のpdf转换**，主包 `cn.local.imagepdf`，最低 API 26。图片转 PDF 保留，新增独立 PDF 合并页及其原子草稿、私有来源副本、重任务互斥和前台进度 / 取消。已在 vivo V2505A / Android 16（API 36）完成引擎和最大页数测试，**最终流程回归通过并已同签名更新主包；vivo 恶意软件风险提示原因仍未确认，2026-10-28 用户知悉后要求继续，现恢复源码交付与推送流程**。功能测试不等于安全结论。
 
@@ -99,7 +141,7 @@
 
 安装前未检测到设备主包，因此本轮不能称为已验证 1.0.2 → 1.0.3 的升级或数据迁移。6.231 秒是文件夹控件与微小合成图片导入回归耗时，不是 500 张 12MP 转换耗时；真实系统目录 / SAF、4 GB 设备、真实相机组、熄屏后台和连续真实峰值等限制仍保留。
 
-以下是 1.0.2 及更早版本的历史报告，保留当时的名称、版本、成功、失败与中断数据；其中“当前”按该历史记录当时的版本理解，当前候选的状态以上方 1.1.0 节为准。
+以下是 1.0.2 及更早版本的历史报告，保留当时的名称、版本、成功、失败与中断数据；其中“当前”按该历史记录当时的版本理解，当前候选的状态以上方 1.1.1 节为准。
 
 ## 1.0.2 及更早历史报告
 

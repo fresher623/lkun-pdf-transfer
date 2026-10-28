@@ -22,10 +22,12 @@ import cn.local.imagepdf.merge.MergeActions
 import cn.local.imagepdf.merge.PdfMergeScreen
 import cn.local.imagepdf.ui.*
 
+private enum class ToolDestination { MENU, IMAGES, MERGE }
+
 class MainActivity : ComponentActivity() {
     private val runtime get() = (application as ImagePdfApplication).runtime
     private val merger get() = (application as ImagePdfApplication).mergeRuntime
-    private var showingMerge by mutableStateOf(false)
+    private var destination by mutableStateOf(ToolDestination.MENU)
     private var notificationForMerge = false
     private val photoPicker = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(
         if (Build.VERSION.SDK_INT >= 33) minOf(500, MediaStore.getPickImagesMaxLimit()) else 500
@@ -44,15 +46,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        showingMerge = savedInstanceState?.getBoolean("showingMerge")
-            ?: (intent.getStringExtra(ConversionService.EXTRA_TOOL) == ConversionService.TOOL_MERGE)
+        destination = savedInstanceState?.getString("toolDestination")?.let { name ->
+            ToolDestination.entries.firstOrNull { it.name == name }
+        } ?: if (savedInstanceState?.containsKey("showingMerge") == true) {
+            // Preserve a tool restored from the previous two-screen navigation.
+            if (savedInstanceState.getBoolean("showingMerge")) ToolDestination.MERGE else ToolDestination.IMAGES
+        } else destinationFromIntent(intent) ?: ToolDestination.MENU
         notificationForMerge = savedInstanceState?.getBoolean("notificationForMerge") ?: false
+        if (destination == ToolDestination.IMAGES && runtime.state.value.task != null) runtime.navigate(AppScreen.PROGRESS)
         val actions = object : AppActions {
             override fun openMerge() {
                 val state = runtime.state.value
                 if (state.importing || state.readingFolder || state.folderSelection != null) {
                     runtime.notice("请先完成当前图片选择或导入，再打开 PDF 合并。")
-                } else showingMerge = true
+                } else destination = ToolDestination.MERGE
             }
             override fun pickFolder() {
                 if (runtime.canPick()) runCatching { folderPicker.launch(null) }
@@ -111,20 +118,30 @@ class MainActivity : ComponentActivity() {
             override fun dismissError() = merger.dismissError()
             override fun dismissNotice() = merger.dismissNotice()
             override fun confirmDuplicates(allow: Boolean) = merger.confirmDuplicates(allow)
-            override fun returnToImages() { showingMerge = false }
+            override fun returnToImages() { openImages() }
         }
         setContent {
             val imageState = runtime.state.collectAsStateWithLifecycle().value
             val mergeState = merger.state.collectAsStateWithLifecycle().value
-            if (showingMerge) PdfMergeScreen(
-                mergeState.copy(otherTaskActive = imageState.importing || imageState.readingFolder || imageState.task != null), mergeActions,
-            ) else ImagePdfApp(
-                imageState.copy(otherTaskActive = mergeState.importing || mergeState.task != null), actions, runtime.repository,
-            )
+            when (destination) {
+                ToolDestination.MENU -> ToolMenuScreen(
+                    imageState, mergeState,
+                    onImages = { openImages() },
+                    onMerge = { destination = ToolDestination.MERGE },
+                )
+                ToolDestination.MERGE -> PdfMergeScreen(
+                    mergeState.copy(otherTaskActive = imageState.importing || imageState.readingFolder || imageState.task != null), mergeActions,
+                    onOpenMenu = { destination = ToolDestination.MENU },
+                )
+                ToolDestination.IMAGES -> ImagePdfApp(
+                    imageState.copy(otherTaskActive = mergeState.importing || mergeState.task != null), actions, runtime.repository,
+                    onOpenMenu = { destination = ToolDestination.MENU },
+                )
+            }
         }
     }
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putBoolean("showingMerge", showingMerge)
+        outState.putString("toolDestination", destination.name)
         outState.putBoolean("notificationForMerge", notificationForMerge)
         super.onSaveInstanceState(outState)
     }
@@ -136,13 +153,20 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        when (intent.getStringExtra(ConversionService.EXTRA_TOOL)) {
-            ConversionService.TOOL_MERGE -> showingMerge = true
-            ConversionService.TOOL_IMAGE -> {
-                showingMerge = false
-                if (runtime.state.value.task != null) runtime.navigate(AppScreen.PROGRESS)
-            }
+        when (destinationFromIntent(intent)) {
+            ToolDestination.MERGE -> destination = ToolDestination.MERGE
+            ToolDestination.IMAGES -> openImages()
+            else -> Unit // Normal launcher/foreground intents keep the currently selected tool.
         }
+    }
+    private fun destinationFromIntent(intent: Intent): ToolDestination? = when (intent.getStringExtra(ConversionService.EXTRA_TOOL)) {
+        ConversionService.TOOL_MERGE -> ToolDestination.MERGE
+        ConversionService.TOOL_IMAGE -> ToolDestination.IMAGES
+        else -> null
+    }
+    private fun openImages() {
+        destination = ToolDestination.IMAGES
+        if (runtime.state.value.task != null) runtime.navigate(AppScreen.PROGRESS)
     }
     private fun requestNotification(forMerge: Boolean) {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this,
@@ -158,5 +182,5 @@ class MainActivity : ComponentActivity() {
         catch (_: ActivityNotFoundException) { showIntentError("没有可处理 PDF 的应用，请使用内置预览或另存为。") }
         catch (_: SecurityException) { showIntentError("无法授予目标应用读取权限，请另存后再打开。") }
     }
-    private fun showIntentError(message: String) { if (showingMerge) merger.error(message) else runtime.error(message) }
+    private fun showIntentError(message: String) { if (destination == ToolDestination.MERGE) merger.error(message) else runtime.error(message) }
 }

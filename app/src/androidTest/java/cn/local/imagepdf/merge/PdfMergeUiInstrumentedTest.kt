@@ -110,6 +110,7 @@ class PdfMergeUiInstrumentedTest {
             // Select the first visible enabled control by screen position, not recycled node order.
             stage("order: move first document down")
             clickOwnText("下移 ↓", allowScroll = true)
+            stage("order: await first physical move callback")
             awaitMain { fixture.moves.size == 1 }
             assertEquals(listOf("a" to "b"), onMain { fixture.moves.toList() })
             assertEquals(listOf("b", "a"), onMain { fixture.state.entries.map { it.id } })
@@ -121,6 +122,7 @@ class PdfMergeUiInstrumentedTest {
 
             stage("order: move second document up")
             clickOwnText("↑ 上移", allowScroll = true)
+            stage("order: await second physical move callback")
             awaitMain { fixture.moves.size == 2 }
             assertEquals(listOf("a" to "b", "a" to "b"), onMain { fixture.moves.toList() })
             assertEquals(listOf("a", "b"), onMain { fixture.state.entries.map { it.id } })
@@ -129,6 +131,7 @@ class PdfMergeUiInstrumentedTest {
             scrollToStart()
             awaitFirstVisibleDocument("文档_a.pdf")
             clickOwnText("移除", allowScroll = true)
+            stage("order: await physical removal callback")
             awaitMain { fixture.removed.isNotEmpty() }
             assertEquals(listOf("a"), onMain { fixture.removed.toList() })
             assertEquals(listOf("b"), onMain { fixture.state.entries.map { it.id } })
@@ -376,6 +379,25 @@ class PdfMergeUiInstrumentedTest {
 
     private data class TapTarget(val windowId: Int, val bounds: Rect)
 
+    private fun visibleTapBounds(label: AccessibilityNodeInfo, button: AccessibilityNodeInfo): Rect? {
+        val visible = Rect().also(button::getBoundsInScreen)
+        if (!visible.intersect(Rect().also(label::getBoundsInScreen))) return null
+        // getBoundsInScreen for the clickable parent can extend past the visible LazyColumn.
+        // Intersect every scroll ancestor, just as the real menu navigation fixture does.
+        var ancestor = label.parent
+        var levels = 0
+        while (levels++ < 24) {
+            val parent = ancestor ?: break
+            if (parent.packageName?.toString() != context.packageName) break
+            if (parent.isScrollable && !visible.intersect(Rect().also(parent::getBoundsInScreen))) return null
+            ancestor = parent.parent
+        }
+        // A few visible pixels of a label at the viewport edge are insufficient for a reliable
+        // physical tap; scroll until a usable part of the real control is in view instead.
+        val minimum = (12f * context.resources.displayMetrics.density).toInt().coerceAtLeast(2)
+        return visible.takeIf { it.width() >= minimum && it.height() >= minimum }
+    }
+
     private fun tapTarget(text: String, dialogTitle: String?, expectedWindowId: Int? = null): TapTarget? {
         val nodes = ownNodes()
         val dialogWindow = if (dialogTitle != null) {
@@ -387,26 +409,49 @@ class PdfMergeUiInstrumentedTest {
             .mapNotNull { label ->
                 val button = clickableParent(label) ?: return@mapNotNull null
                 if (!button.isEnabled || !button.isVisibleToUser || button.packageName?.toString() != context.packageName) return@mapNotNull null
-                val buttonBounds = Rect().also(button::getBoundsInScreen)
-                val labelBounds = Rect().also(label::getBoundsInScreen)
-                val visible = Rect(buttonBounds)
-                // Tap the visible label inside its clickable container; a clipped LazyColumn
-                // item can have a clickable container whose centre is outside the viewport.
-                if (!visible.intersect(labelBounds) || visible.width() < 2 || visible.height() < 2) return@mapNotNull null
+                val visible = visibleTapBounds(label, button) ?: return@mapNotNull null
                 TapTarget(button.windowId, visible)
             }.firstOrNull()
     }
 
+    private fun scrollTowardControl(text: String, dialogTitle: String?, expectedWindowId: Int?): Boolean {
+        val nodes = ownNodes()
+        val dialogWindow = dialogTitle?.let { title -> nodes.firstOrNull { matches(it, title) }?.windowId }
+        val label = nodes.firstOrNull {
+            matches(it, text) && (dialogWindow == null || it.windowId == dialogWindow) &&
+                (expectedWindowId == null || it.windowId == expectedWindowId) && clickableParent(it)?.isEnabled == true
+        }
+        if (label != null) {
+            val labelBounds = Rect().also(label::getBoundsInScreen)
+            var ancestor = label.parent
+            repeat(24) {
+                val parent = ancestor ?: return@repeat
+                if (parent.packageName?.toString() != context.packageName) return@repeat
+                if (parent.isScrollable) {
+                    val viewport = Rect().also(parent::getBoundsInScreen)
+                    val direction = if (labelBounds.top <= viewport.top) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                        else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                    return parent.performAction(direction)
+                }
+                ancestor = parent.parent
+            }
+        }
+        return scrollOwnList(true)
+    }
+
     private suspend fun clickOwnText(text: String, allowScroll: Boolean = false, dialogTitle: String? = null, expectedWindowId: Int? = null): Unit = withTimeout(15_000) {
         var lastScroll = 0L
+        var prior: TapTarget? = null
+        var stableSince = 0L
         while (true) {
             instrumentation.waitForIdleSync()
-            val first = tapTarget(text, dialogTitle, expectedWindowId)
-            if (first != null) {
-                // Confirm a fresh current window and stable position after animations settle.
-                delay(120)
-                val target = tapTarget(text, dialogTitle, expectedWindowId)
-                if (target != null && target == first) {
+            val target = tapTarget(text, dialogTitle, expectedWindowId)
+            val now = SystemClock.uptimeMillis()
+            if (target != null) {
+                if (target != prior || stableSince == 0L) stableSince = now
+                // A tap while a scroll is still settling can be consumed only to stop it.
+                // Require the current own-window target to remain stationary for 600 ms.
+                if (target == prior && now - stableSince >= 600L) {
                     val x = target.bounds.exactCenterX()
                     val y = target.bounds.exactCenterY()
                     stage("tap: $text; window=${target.windowId}; x=$x y=$y")
@@ -425,8 +470,14 @@ class PdfMergeUiInstrumentedTest {
                     instrumentation.waitForIdleSync()
                     return@withTimeout
                 }
+            } else {
+                stableSince = 0L
+                if (allowScroll && now - lastScroll >= 500) {
+                    scrollTowardControl(text, dialogTitle, expectedWindowId)
+                    lastScroll = SystemClock.uptimeMillis()
+                }
             }
-            if (allowScroll && SystemClock.uptimeMillis() - lastScroll >= 500) { scrollOwnList(true); lastScroll = SystemClock.uptimeMillis() }
+            prior = target
             delay(100)
         }
     }
@@ -496,7 +547,7 @@ class PdfMergeUiInstrumentedTest {
     private fun diagnoseSyntheticUi() {
         val allowed = setOf("PDF 合并", "文档_a.pdf", "文档_b.pdf", "合成预览结果.pdf", "合并完成",
             "预览", "预览结果", "关闭", "下一页", "上一页", "PDF 第 1 页", "PDF 第 2 页", "1 / 2", "2 / 2",
-            "清空合并列表？", "合并结果尚未另存", "取消", "返回图片工具", "清空列表",
+            "清空合并列表？", "合并结果尚未另存", "取消", "返回图片工具", "清空列表", "下移 ↓", "↑ 上移", "移除",
             "暂时无法渲染这一页，可尝试用其他应用打开 PDF。")
         val labels = ownNodes().mapNotNull { node ->
             val value = listOfNotNull(node.text?.toString(), node.contentDescription?.toString()).firstOrNull { it in allowed }
