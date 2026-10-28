@@ -13,16 +13,18 @@
 | 独立输出复核 | **1000 页全文 / 顺序 / 页框 / 旋转 / 内容流全量通过，三页像素抽查通过** | `build/merge-device-evidence/1793189377164/independent-validation.json`；strict pypdf + MuPDF，无修复，范围见下一节 |
 | 最终界面、图片、运行时与服务回归 | **15 通过、0 失败、0 跳过，26.551 s**；合并三项 UI + 四项文件夹全选 / 500 导入、单批 500 / 501、Pipeline、AppFlow、MergeRuntime 和残留取消服务 | `build/merge-flow-device-accepted.log`；使用受控夹具及正常前台辅助，系统选择 / SAF 外部界面未因此视为全部验收 |
 | 测试组件 | 结果预览窗口等待修正后的测试 APK 构建成功，7 s；已安装并实际完成上述 15 项 | `merge-preview-test-build.log` 与 accepted 设备日志分别记录构建和执行，不混淆二者 |
-| 主包安装与启动 | `install -r` 返回 Success，现为 **1.1.0 / code 6、同调试签名**；携带合并页参数的启动请求返回 Status ok，冷启动 463 ms（未另取主包画面证据） | firstInstallTime 仍为 2026-10-27 22:16:59，与安装前一致；未卸载 / 清数据，未逐项读取比对原私有草稿；已安装 APK 与构建 debug 文件均为 13,507,877 bytes、SHA-256 完全一致，见 `build/merge-installed-check/verification.json` |
-| 手机安全提示 | **用户确认 vivo 恶意软件风险提示针对主应用，原因待定位** | 告警原文 / 检测引擎 / 威胁名尚未取得；本机 Defender 扫描完成、项目匹配检测为 0，仍不能消除手机告警；2026-10-28 用户知悉后要求继续源码交付，不作安全通过或误报结论 |
+| 较早一轮主包安装与启动 | `install -r` 返回 Success，现为 **1.1.0 / code 6、同调试签名**；携带合并页参数的启动请求返回 Status ok，冷启动 463 ms（未另取主包画面证据） | firstInstallTime 仍为 2026-10-27 22:16:59，与安装前一致；未卸载 / 清数据，未逐项读取比对原私有草稿；已安装 APK 与构建 debug 文件均为 13,507,877 bytes、SHA-256 完全一致，见 `build/merge-installed-check/verification.json` |
+| 手机安全提示 | **用户确认 vivo 恶意软件风险提示针对主应用，原因待定位** | 已取得“高危病毒／危险行为程序”截图；具体检测引擎、威胁标识和规则尚未取得；本机 Defender 扫描完成、项目匹配检测为 0，仍不能消除手机告警；2026-10-28 用户知悉后要求继续源码交付，不作安全通过或误报结论 |
 | 源码交付 | 功能提交 `5cbeb59` 已普通推送至独立仓库 `main`，远端哈希核对一致 | 2026-10-28 按用户继续要求执行；交付文档本轮同步，vivo 告警原因仍未确认 |
 | M2 / M3 | **未实施** | 百宝箱首页 / 正式更名和解混淆整合仍为后续范围 |
 
 ### 手机安全提示与交付状态
 
-主应用完成覆盖安装后，用户确认 vivo 恶意软件风险提示针对“l君のpdf转换”主应用；尚未取得具体告警原文、检测引擎或威胁名。`build/merge-installed-check/verification.json` 证实已安装包与构建 debug APK 完全一致：13,507,877 bytes，SHA-256 `d7acc34c68a3e8b3663a6ce04167e60e0fe2fadaabec2b9db395d373bd74cb20`。这只证明文件身份，不证明安全或误报。
+主应用完成覆盖安装后，用户确认 vivo 恶意软件风险提示针对“l君のpdf转换”主应用；现已取得“高危病毒／危险行为程序”截图，尚未取得具体检测引擎、威胁标识或规则。`build/merge-installed-check/verification.json` 证实已安装包与构建 debug APK 完全一致：13,507,877 bytes，SHA-256 `d7acc34c68a3e8b3663a6ce04167e60e0fe2fadaabec2b9db395d373bd74cb20`。这只证明文件身份，不证明安全或误报。
 
 本机 Defender 扫描于 2026-10-28 20:17:22～20:17:27（Asia/Shanghai）完成，`build/merge-defender-scan.json` 的项目匹配检测数为 0；该结果不能消除 vivo 警报，也不构成所有检测引擎或所有依赖均安全的结论。没有关闭安全检查、绕过警告、卸载应用或清除数据。**功能回归已完成。此前因手机告警暂缓交付；2026-10-28 用户知悉后要求继续，现恢复源码交付与 GitHub 推送流程。告警原因仍未确认，不作安全通过或误报结论。** 调查依据和剩余事项见 [安全核查记录](SECURITY_REVIEW.md)。
+
+最近一次用户要求安装发生在 2026-10-28 20:39，`install -r --user 0` 返回 Success；版本为 1.1.0 / code 6，`firstInstallTime` 与 `lastUpdateTime` 均为 20:39:34。该次没有逐项读取旧草稿，不能沿用较早更新轮次的时间不变记录来证明保留数据。用户随后提供的两张截图明确为“发现高危病毒／危险行为程序”，原始图片未进入仓库，完整证据及 [待提交的复核说明](VIVO_REVIEW_REQUEST.md) 见 [安全审查记录](SECURITY_REVIEW.md)。
 
 ### 已通过的 50 份 / 1000 页与独立复核
 
