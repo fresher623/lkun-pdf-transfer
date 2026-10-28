@@ -48,8 +48,12 @@ class ToolMenuInstrumentedTest {
             awaitImageTool()
             before.assertPreserved()
 
-            stage("launcher: recreate the image tool")
+            stage("launcher: ordinary MAIN keeps images before recreation")
+            sendForegroundIntent()
+            awaitImageTool()
+            stage("launcher: recreate the image tool starts")
             scenario.recreate()
+            stage("launcher: image recreation returned; await the same tool")
             awaitImageTool()
             before.assertPreserved()
 
@@ -63,8 +67,12 @@ class ToolMenuInstrumentedTest {
             awaitMergeTool()
             before.assertPreserved()
 
-            stage("launcher: recreate PDF merge")
+            stage("launcher: ordinary MAIN keeps merge before recreation")
+            sendForegroundIntent()
+            awaitMergeTool()
+            stage("launcher: recreate PDF merge starts")
             scenario.recreate()
+            stage("launcher: merge recreation returned; await the same tool")
             awaitMergeTool()
             before.assertPreserved()
 
@@ -87,24 +95,28 @@ class ToolMenuInstrumentedTest {
             stage("intent: foreground merge notification opens the merge tool")
             sendForegroundIntent(ConversionService.TOOL_MERGE)
             awaitMergeTool()
-            scenario.recreate()
-            awaitMergeTool()
 
             stage("intent: a normal launcher intent keeps merge selected")
             sendForegroundIntent()
             awaitMergeTool()
             before.assertPreserved()
+            stage("intent: recreate merge after ordinary MAIN starts")
+            scenario.recreate()
+            stage("intent: merge recreation returned; await the same tool")
+            awaitMergeTool()
 
             stage("intent: image notification switches to the image tool")
             sendForegroundIntent(ConversionService.TOOL_IMAGE)
-            awaitImageTool()
-            scenario.recreate()
             awaitImageTool()
 
             stage("intent: a normal launcher intent keeps images selected")
             sendForegroundIntent()
             awaitImageTool()
             before.assertPreserved()
+            stage("intent: recreate images after ordinary MAIN starts")
+            scenario.recreate()
+            stage("intent: image recreation returned; await the same tool")
+            awaitImageTool()
 
             stage("intent: system back returns from images to menu")
             pressOwnBack()
@@ -117,7 +129,12 @@ class ToolMenuInstrumentedTest {
             stage("intent: merge toolbar returns to menu")
             tapOwnText(RETURN_TO_MENU)
             awaitMenu()
+            stage("intent: ordinary MAIN keeps menu before recreation")
+            sendForegroundIntent()
+            awaitMenu()
+            stage("intent: recreate menu starts")
             scenario.recreate()
+            stage("intent: menu recreation returned; await the same menu")
             awaitMenu()
             before.assertPreserved()
         }
@@ -174,14 +191,28 @@ class ToolMenuInstrumentedTest {
             stage("all route and preservation checks completed")
         } catch (failure: Throwable) {
             runCatching { diagnoseNavigation() }
-            // Only at the end of a failed run, read the current save-state fields. Calling
-            // Activity save-state machinery can mark lifecycle state as saved, so it must
-            // never be inserted into successful routing/recreation assertion paths.
-            scenario?.let { runCatching { reportActivityState(it, "failure", includeSavedState = true) } }
+            scenario?.let { runCatching { reportActivityState(it, "failure") } }
             throw AssertionError("Menu navigation failed at stage: $lastStage", failure)
         } finally {
-            scenario?.close()
-            before.assertPreserved()
+            // Product onNewIntent updates Activity.intent to the received notification.
+            // Restore the ActivityScenario launcher request before lifecycle operations;
+            // verify that this ordinary launcher request preserves the visible tool first.
+            try {
+                if (scenario != null) {
+                    val nodes = ownNodes()
+                    val visibleRouteLabels = setOf(MENU_MARKER, IMAGE_TITLE, MERGE_TITLE, RETURN_TO_MENU)
+                        .filterTo(mutableSetOf()) { label -> nodes.any { matches(it, label) } }
+                    stage("cleanup: restore ordinary launcher before ActivityScenario close", remember = false)
+                    sendForegroundIntent()
+                    if (visibleRouteLabels.isNotEmpty()) awaitScreen(visibleRouteLabels, emptySet())
+                }
+            } finally {
+                try {
+                    stage("cleanup: ActivityScenario close starts", remember = false)
+                    scenario?.close()
+                    stage("cleanup: ActivityScenario close returned", remember = false)
+                } finally { before.assertPreserved() }
+            }
         }
     }
 
@@ -195,19 +226,13 @@ class ToolMenuInstrumentedTest {
             else putExtra(ConversionService.EXTRA_TOOL, tool)
         }
 
-    private fun reportActivityState(scenario: ActivityScenario<MainActivity>, reason: String, includeSavedState: Boolean = false) {
+    private fun reportActivityState(scenario: ActivityScenario<MainActivity>, reason: String) {
         scenario.onActivity { activity ->
             val current = activity.intent
-            val details = if (includeSavedState) {
-                val state = Bundle()
-                instrumentation.callActivityOnSaveInstanceState(activity, state)
-                val savedRoute = state.getString("toolDestination")?.takeIf { it in setOf("MENU", "IMAGES", "MERGE") } ?: "absent-or-other"
-                "; currentSavedRoute=$savedRoute; legacyRouteKey=${state.containsKey("showingMerge") }"
-            } else ""
             stage("activity $reason: tool=${knownTool(current.getStringExtra(ConversionService.EXTRA_TOOL))}; " +
                 "hasTool=${current.hasExtra(ConversionService.EXTRA_TOOL)}; main=${current.action == Intent.ACTION_MAIN}; " +
                 "flags=${current.flags}; task=${activity.taskId}; taskRoot=${activity.isTaskRoot}; " +
-                "windowFocused=${activity.hasWindowFocus()}; finishing=${activity.isFinishing}; destroyed=${activity.isDestroyed}$details", remember = false)
+                "windowFocused=${activity.hasWindowFocus()}; finishing=${activity.isFinishing}; destroyed=${activity.isDestroyed}", remember = false)
         }
     }
 
