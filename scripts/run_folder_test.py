@@ -29,9 +29,19 @@ def main():
     parser.add_argument('--package', default='cn.local.imagepdf.benchmark')
     parser.add_argument('--output', type=pathlib.Path, default=pathlib.Path('device-folder-test.log'))
     parser.add_argument('--timeout', type=int, default=300)
+    parser.add_argument('--classes', default='cn.local.imagepdf.platform.FolderRepositoryInstrumentedTest',
+                        help='Comma-separated instrumentation classes, within cn.local.imagepdf')
+    parser.add_argument('--foreground-every', type=int, default=0,
+                        help='Optional seconds between normal SINGLE_TOP foreground intents')
+    parser.add_argument('--merge-boundary', action='store_true',
+                        help='Enable the opt-in synthetic 50-file/1000-page merge test')
     args = parser.parse_args()
     if not re.fullmatch(r'[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+', args.package) or not args.package.endswith('.benchmark'):
         parser.error('Select an isolated benchmark package')
+    if any(not re.fullmatch(r'cn\.local\.imagepdf(?:\.[A-Za-z_]\w*)+(?:#[A-Za-z_]\w*)?', name) for name in args.classes.split(',')):
+        parser.error('Use fully qualified imagepdf instrumentation class names')
+    if args.foreground_every < 0:
+        parser.error('foreground-every cannot be negative')
     base = [args.adb] + (['-s', args.serial] if args.serial else [])
 
     def adb(*parts, timeout=15):
@@ -56,9 +66,10 @@ def main():
             if 'success=true' not in reply:
                 raise RuntimeError('Synthetic folder grant was not acknowledged: ' + reply)
             granted.append(tree)
-        invocation = ['toybox', 'nohup', 'am', 'instrument', '-w', '-r', '-e', 'class',
-                      'cn.local.imagepdf.platform.FolderRepositoryInstrumentedTest',
-                      owner + '/androidx.test.runner.AndroidJUnitRunner']
+        invocation = ['toybox', 'nohup', 'am', 'instrument', '-w', '-r', '-e', 'class', args.classes]
+        if args.merge_boundary:
+            invocation += ['-e', 'mergeBoundary', 'true']
+        invocation += [owner + '/androidx.test.runner.AndroidJUnitRunner']
         adb('shell', shlex.join(invocation) + ' > ' + remote + ' 2>&1 < /dev/null &')
         time.sleep(2)
         # Same intent as ActivityScenario; SINGLE_TOP preserves an already mounted test UI.
@@ -66,12 +77,18 @@ def main():
             'android.intent.category.LAUNCHER', '-f', '0x30000000', '-n',
             args.package + '/cn.local.imagepdf.MainActivity')
         deadline = time.monotonic() + args.timeout
+        next_foreground = time.monotonic() + args.foreground_every if args.foreground_every else deadline + 1
         printed = 0
         while time.monotonic() < deadline:
             try:
+                if time.monotonic() >= next_foreground:
+                    adb('shell', 'am', 'start', '-a', 'android.intent.action.MAIN', '-c',
+                        'android.intent.category.LAUNCHER', '-f', '0x30000000', '-n',
+                        args.package + '/cn.local.imagepdf.MainActivity')
+                    next_foreground = time.monotonic() + args.foreground_every
                 log = adb('shell', 'cat', remote)
                 args.output.write_text(log, encoding='utf-8')
-                stages = [line for line in log.splitlines() if 'Folder UI:' in line]
+                stages = [line for line in log.splitlines() if 'Folder UI:' in line or 'Merge UI:' in line]
                 for stage in stages[printed:]:
                     print(stage, flush=True)
                 printed = len(stages)

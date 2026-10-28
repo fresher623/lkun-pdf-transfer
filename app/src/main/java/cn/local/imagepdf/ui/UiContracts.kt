@@ -17,6 +17,7 @@ data class TaskUi(
     val exporting: Boolean = false,
     val copiedBytes: Long = 0,
     val totalBytes: Long = 0,
+    val id: String = java.util.UUID.randomUUID().toString(),
 )
 
 data class ResultUi(
@@ -43,9 +44,11 @@ data class AppUiState(
     val interrupted: Boolean = false,
     val folderSelection: FolderSelection? = null,
     val readingFolder: Boolean = false,
+    val otherTaskActive: Boolean = false,
 )
 
 interface AppActions {
+    fun openMerge() {}
     fun pickPhotos()
     fun pickFiles()
     fun pickFolder()

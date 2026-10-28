@@ -137,7 +137,8 @@ fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageReposit
         var exitConfirm by remember { mutableStateOf(false) }
         var imagePreview by remember { mutableStateOf<ImageEntry?>(null) }
         var pdfPreview by remember { mutableStateOf(false) }
-        val busy = state.importing || state.readingFolder || state.folderSelection != null || state.task != null
+        var showLicenses by remember { mutableStateOf(false) }
+        val busy = state.importing || state.readingFolder || state.folderSelection != null || state.task != null || state.otherTaskActive
         val activity = LocalActivity.current
         val requestNew = {
             if (state.images.isNotEmpty() || (state.result != null && !state.result.exported)) newConfirm = true
@@ -174,6 +175,9 @@ fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageReposit
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
+                if (state.otherTaskActive) Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+                    Text("PDF 合并工具正在处理任务，暂时不能导入、生成或另存。当前图片草稿已保留，可继续查看。", Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), style = MaterialTheme.typography.bodySmall, lineHeight = 20.sp)
+                }
                 if (state.importing) {
                     Surface(color = MaterialTheme.colorScheme.primaryContainer) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
@@ -193,7 +197,7 @@ fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageReposit
                     }
                 }
                 when (state.screen) {
-                    AppScreen.HOME -> HomeScreen(state, actions, requestNew)
+                    AppScreen.HOME -> HomeScreen(state, actions, requestNew) { showLicenses = true }
                     AppScreen.ORGANIZE -> OrganizeScreen(state, actions, repository, !busy, { clearConfirm = true }, { imagePreview = it })
                     AppScreen.SETTINGS -> SettingsScreen(state, actions, !busy)
                     AppScreen.PROGRESS -> ProgressScreen(state, actions)
@@ -222,6 +226,7 @@ fun ImagePdfApp(state: AppUiState, actions: AppActions, repository: ImageReposit
         }
         imagePreview?.let { item -> ImagePreview(item, repository) { imagePreview = null } }
         if (pdfPreview && state.result != null) PdfPreview(state.result) { pdfPreview = false }
+        if (showLicenses) OpenSourceDialog { showLicenses = false }
         state.folderSelection?.let { selection ->
             FolderPicker(selection, actions::importFolder, actions::dismissFolder)
         }
@@ -237,8 +242,15 @@ private fun screenTitle(screen: AppScreen): String = when (screen) {
 }
 
 @Composable
-private fun HomeScreen(state: AppUiState, actions: AppActions, onNew: () -> Unit) {
+private fun HomeScreen(state: AppUiState, actions: AppActions, onNew: () -> Unit, onLicenses: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("PDF 合并", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("多份 PDF 按顺序合成，保留原有页面尺寸。", style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = actions::openMerge, modifier = Modifier.heightIn(min = 48.dp)) { Text("打开 PDF 合并 →") }
+            }
+        }
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primaryContainer) {
             Column(Modifier.fillMaxWidth().padding(28.dp)) {
                 Text("把零散的图片，\n收成一份 PDF。", fontSize = 30.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -259,14 +271,14 @@ private fun HomeScreen(state: AppUiState, actions: AppActions, onNew: () -> Unit
                 Button(onClick = { actions.navigate(AppScreen.PROGRESS) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("查看当前任务") }
             }
         } else {
-            Button(onClick = actions::pickFolder, enabled = !state.importing && !state.readingFolder, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(16.dp)) {
+            Button(onClick = actions::pickFolder, enabled = !state.importing && !state.readingFolder && !state.otherTaskActive, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(16.dp)) {
                 Text("选择文件夹 · 批量导入", fontSize = 17.sp, lineHeight = 24.sp, textAlign = TextAlign.Center)
             }
             Helper("选择图片所在文件夹，应用内点击全选，再导入；一次最多500张。")
-            OutlinedButton(onClick = actions::pickFiles, enabled = !state.importing && !state.readingFolder, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+            OutlinedButton(onClick = actions::pickFiles, enabled = !state.importing && !state.readingFolder && !state.otherTaskActive, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
                 Text("逐张选择图片", textAlign = TextAlign.Center)
             }
-            OutlinedButton(onClick = actions::pickPhotos, enabled = !state.importing && !state.readingFolder, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+            OutlinedButton(onClick = actions::pickPhotos, enabled = !state.importing && !state.readingFolder && !state.otherTaskActive, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
                 Text("从相册选择（数量由系统限制）", textAlign = TextAlign.Center)
             }
             if (state.images.isNotEmpty()) InfoCard("继续当前整理", "已选 ${state.images.size}/500 张 · ${state.sortLabel}") {
@@ -291,6 +303,7 @@ private fun HomeScreen(state: AppUiState, actions: AppActions, onNew: () -> Unit
             Text("仅访问你选择的图片，不上传内容。每张图片对应一页，可设置纸张、边距与质量。", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, lineHeight = 20.sp)
         }
         if (state.images.isNotEmpty() && state.task == null) TextButton(onClick = onNew, enabled = !state.importing, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("新建空白任务") }
+        TextButton(onClick = onLicenses, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("开源许可") }
         Spacer(Modifier.height(12.dp))
     }
 }
@@ -516,7 +529,7 @@ private fun ResultScreen(state: AppUiState, actions: AppActions, onPreview: () -
             LinearProgressIndicator(progress = { if (state.task.totalBytes > 0) (state.task.copiedBytes.toFloat() / state.task.totalBytes).coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth())
             OutlinedButton(onClick = actions::cancel, enabled = !state.task.cancelling, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text(if (state.task.cancelling) "正在取消保存…" else "取消保存") }
         }
-        Button(onClick = actions::save, enabled = state.task == null, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (result.exported) "再次另存为" else "另存为 PDF", fontSize = 17.sp) }
+        Button(onClick = actions::save, enabled = state.task == null && !state.otherTaskActive, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (result.exported) "再次另存为" else "另存为 PDF", fontSize = 17.sp) }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = onPreview, modifier = Modifier.weight(1f).heightIn(min = 54.dp)) { Text("预览 PDF") }
             OutlinedButton(onClick = actions::share, modifier = Modifier.weight(1f).heightIn(min = 54.dp)) { Text("分享") }
@@ -545,6 +558,12 @@ private fun ImagePreview(item: ImageEntry, repository: ImageRepository, onDismis
 }
 
 private data class PdfFrame(val bitmap: Bitmap, val pages: Int)
+
+/** Shared bounded preview for an owned PDF source or a complete generated result. */
+@Composable
+fun PdfFilePreview(filePath: String, name: String, pageCount: Int, onDismiss: () -> Unit) {
+    PdfPreview(ResultUi(filePath = filePath, name = name, pageCount = pageCount, bytes = 0), onDismiss)
+}
 
 @Composable
 private fun PdfPreview(result: ResultUi, onDismiss: () -> Unit) {

@@ -1,0 +1,3 @@
+# Preserve upstream license/notice bytes, including original whitespace.
+app/src/main/assets/licenses/pdfbox-android-LICENSE.txt -text -whitespace
+app/src/main/assets/licenses/pdfbox-android-NOTICE.txt -text -whitespace

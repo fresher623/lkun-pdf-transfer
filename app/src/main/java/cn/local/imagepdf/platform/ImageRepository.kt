@@ -21,6 +21,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.ResolverStyle
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -40,8 +41,9 @@ class ImageRepository(context: Context) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     }
     private val thumbnailMutex = Mutex()
-    private val sourceMutex = Mutex()
-    private val recentSources = HashMap<String, Long>()
+    private val sourceMutex = sourceLocks.getOrPut(sources.canonicalPath) { Mutex() }
+    private val grants = ImageGrantRegistry(app.getSharedPreferences(ImageGrantRegistry.PREFERENCES_NAME, Context.MODE_PRIVATE))
+    private val sourceFiles = ImageSourceFilesCleaner(sources)
 
     suspend fun importImages(
         uris: List<Uri>, startOrder: Long,
@@ -109,9 +111,14 @@ class ImageRepository(context: Context) {
     private suspend fun persistentOrCopy(uri: Uri, id: String): Uri {
         if (uri.scheme == "content") {
             try {
+                // Reusing an existing grant does not transfer its ownership to this tool.
+                if (resolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }) {
+                    grants.touchKnown(uri)
+                    return uri
+                }
                 resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 if (resolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }) {
-                    recentSources[uri.toString()] = System.currentTimeMillis()
+                    grants.recordNew(uri)
                     return uri
                 }
             } catch (_: SecurityException) { /* Photo Picker providers may not support persistent grants. */ }
@@ -288,16 +295,13 @@ class ImageRepository(context: Context) {
         val paths = keep.mapNotNull { item ->
             Uri.parse(item.uri).takeIf { it.scheme == "file" }?.path
         }.toSet()
-        sources.listFiles()?.forEach { file -> if (file.absolutePath !in paths && file.lastModified() < cutoff) file.delete() }
+        sourceFiles.releaseUnused(paths, cutoff)
         val contentUris = keep.map { it.uri }.toSet()
-        resolver.persistedUriPermissions.forEach { permission ->
-            if (permission.uri.toString() !in contentUris && permission.persistedTime < cutoff &&
-                (recentSources[permission.uri.toString()] ?: 0) < cutoff) {
-                try { resolver.releasePersistableUriPermission(permission.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                catch (_: SecurityException) { /* Provider already revoked the grant. */ }
-            }
+        val coroutine = currentCoroutineContext()
+        grants.releaseUnused(contentUris, cutoff) { uri ->
+            coroutine.ensureActive()
+            resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        recentSources.entries.removeAll { it.value < cutoff }
     } }
 
     private fun deletePrivateSource(uri: String) {
@@ -305,5 +309,9 @@ class ImageRepository(context: Context) {
             val file = File(path)
             if (file.parentFile?.canonicalPath == sources.canonicalPath) file.delete()
         }
+    }
+
+    private companion object {
+        val sourceLocks = ConcurrentHashMap<String, Mutex>()
     }
 }

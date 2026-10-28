@@ -26,8 +26,8 @@ android {
         applicationId = "cn.local.imagepdf"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.1.0"
         manifestPlaceholders["appLabel"] = "l君のpdf转换"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -71,6 +71,10 @@ android {
 }
 dependencies {
     implementation(project(":core"))
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0") {
+        // Encrypted and signed inputs are rejected before crypto handling in this release.
+        exclude(group = "org.bouncycastle")
+    }
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

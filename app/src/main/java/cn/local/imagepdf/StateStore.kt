@@ -72,7 +72,9 @@ internal class StateStore(private val context: Context) {
 
     fun cleanIncompleteFiles() {
         // Results are retained. Only uncommitted/intermediate files from a dead process are removed.
-        File(context.filesDir, "results").walkTopDown().filter {
+        File(context.filesDir, "results").listFiles().orEmpty().filter {
+            it.isDirectory && !it.name.startsWith("merge-")
+        }.flatMap { it.walkTopDown().toList() }.filter {
             it.isFile && (it.extension == "partial" || it.name == "page.jpeg" || it.name.startsWith("page-") && it.extension == "jpg")
         }.forEach { it.delete() }
         File(context.cacheDir, "conversion").takeIf { it.exists() }?.deleteRecursively()

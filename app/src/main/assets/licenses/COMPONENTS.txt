@@ -1,0 +1,18 @@
+l君のpdf转换 · 开源组件
+
+图片转 PDF 使用本工程的 JPEG 页流式写入器。
+PDF 合并使用 PdfBox-Android 2.0.27.0（Apache License 2.0），
+基于 Apache PDFBox，并包含其 FontBox、字体资源和相关上游声明。
+完整 NOTICE、Apache 2.0 及字体资源许可随此页一并提供。
+本版本不包含 PDFBox examples 或 Bouncy Castle 加密依赖。
+
+界面及平台组件：
+Kotlin standard library 2.1.20
+Kotlinx coroutines Android 1.10.2
+AndroidX Compose BOM 2025.04.01（UI、foundation、Material3、material-icons-core）
+AndroidX activity-compose 1.10.1、core-ktx 1.16.0
+AndroidX lifecycle-runtime-compose 2.9.0、exifinterface 1.4.1
+上述组件采用 Apache License 2.0。
+
+来源及各组件详细清单见项目 THIRD_PARTY_NOTICES.md。
+本说明不为项目原创业务代码另行指定开源许可证。

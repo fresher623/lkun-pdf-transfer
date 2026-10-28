@@ -3,6 +3,7 @@ package cn.local.imagepdf
 import android.app.*
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -15,8 +16,11 @@ import kotlinx.coroutines.flow.*
 class ConversionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val runtime get() = (application as ImagePdfApplication).runtime
+    private val merger get() = (application as ImagePdfApplication).mergeRuntime
+    private val activeTool = MutableStateFlow(TOOL_IMAGE)
     private var wakeLock: PowerManager.WakeLock? = null
     private var executing = false
+    private var latestStartId = 0
 
     @OptIn(FlowPreview::class)
     override fun onCreate() {
@@ -32,40 +36,58 @@ class ConversionService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK, "$packageName:conversion"
         ).apply { acquire(60 * 60 * 1000L) }
         scope.launch {
-            runtime.state.map { it.task }.distinctUntilChanged().sample(500).collect { task ->
+            combine(runtime.state, merger.state, activeTool) { image, merge, tool ->
+                if (tool == TOOL_MERGE) merge.task else image.task
+            }.distinctUntilChanged().sample(500).collect { task ->
                 if (task != null) runCatching { getSystemService(NotificationManager::class.java)
                     .notify(NOTIFICATION, notification(task)) }
             }
         }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_CANCEL) runtime.cancel()
-        else if (!executing) { executing = true; runtime.executePending(this) }
+        latestStartId = startId
+        if (intent?.action == ACTION_CANCEL) {
+            if (!executing) {
+                // A notification from an already completed run must not leave an empty FGS alive.
+                finishWork()
+            } else if (intent.getStringExtra(EXTRA_TOOL) == activeTool.value &&
+                intent.getStringExtra(EXTRA_TASK_ID) == currentTask()?.id) cancelCurrent()
+        } else if (!executing) {
+            activeTool.value = if (intent?.getStringExtra(EXTRA_TOOL) == TOOL_MERGE) TOOL_MERGE else TOOL_IMAGE
+            executing = true
+            ServiceCompat.startForeground(this, NOTIFICATION, notification(currentTask()),
+                if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0)
+            if (activeTool.value == TOOL_MERGE) merger.executePending(this) else runtime.executePending(this)
+        }
         return START_NOT_STICKY
     }
     override fun onBind(intent: Intent?): IBinder? = null
     // API 35 dataSync timeout: stop promptly, request cooperative cleanup, retain the draft.
     override fun onTimeout(startId: Int, fgsType: Int) {
-        runtime.cancel()
-        runtime.notice("系统已停止长时间后台任务，请回到应用重新生成。")
+        cancelCurrent()
+        if (activeTool.value == TOOL_MERGE) merger.notice("系统已停止长时间后台任务，请回到 PDF 合并重新开始。")
+        else runtime.notice("系统已停止长时间后台任务，请回到应用重新生成。")
         finishWork()
     }
     internal fun finishWork() {
         executing = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        if (latestStartId > 0) stopSelf(latestStartId) else stopSelf()
     }
     override fun onDestroy() {
-        if (executing) runtime.cancel()
+        if (executing) cancelCurrent()
         scope.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()
     }
     private fun notification(task: TaskUi?): Notification {
+        val tool = activeTool.value
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            .putExtra(EXTRA_TOOL, tool).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val cancel = PendingIntent.getService(this, 1, Intent(this, ConversionService::class.java)
+            .putExtra(EXTRA_TOOL, tool).putExtra(EXTRA_TASK_ID, task?.id)
+            .setData(Uri.parse("lkun-pdf://cancel/$tool/${task?.id ?: "preparing"}"))
             .setAction(ACTION_CANCEL), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val status = task?.let {
             if (it.exporting) "正在保存 · ${if (it.totalBytes > 0) it.copiedBytes * 100 / it.totalBytes else 0}%"
@@ -75,12 +97,18 @@ class ConversionService : Service() {
             (task.copiedBytes * 100 / task.totalBytes).toInt() else task?.completed ?: 0
         val total = if (task?.exporting == true) 100 else task?.total ?: 0
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification).setContentTitle("l君のpdf转换")
+            .setSmallIcon(R.drawable.ic_notification).setContentTitle(if (tool == TOOL_MERGE) "PDF 合并 · l君のpdf转换" else "图片转 PDF · l君のpdf转换")
             .setContentText(status).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .setProgress(total, progress, total == 0).setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .addAction(0, "取消任务", cancel).build()
     }
+    private fun currentTask() = if (activeTool.value == TOOL_MERGE) merger.state.value.task else runtime.state.value.task
+    private fun cancelCurrent() { if (activeTool.value == TOOL_MERGE) merger.cancel() else runtime.cancel() }
     companion object {
+        const val EXTRA_TOOL = "tool"
+        const val TOOL_IMAGE = "image"
+        const val TOOL_MERGE = "merge"
+        const val EXTRA_TASK_ID = "taskId"
         private const val CHANNEL = "pdf_conversion"
         private const val NOTIFICATION = 1001
         private const val ACTION_CANCEL = "cn.local.imagepdf.CANCEL"

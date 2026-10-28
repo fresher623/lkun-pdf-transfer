@@ -1,6 +1,6 @@
 # 依赖与许可证清单
 
-应用没有网络权限，不引入第三方 PDF 引擎。PDF 写入器及本工程业务源码为本项目实现；项目自身是否开源、采用何种分发许可由项目所有者决定。本文件不代替各上游项目的完整许可证。
+应用没有网络权限。图片 PDF 写入器及本工程业务源码为本项目实现；1.1.0 新增 PDF 合并使用 PdfBox-Android。项目自身采用何种分发许可由项目所有者决定。本文件不代替各上游项目的完整许可证。
 
 ## APK 的直接依赖
 
@@ -14,8 +14,11 @@
 | AndroidX lifecycle-runtime-compose | 2.9.0 | Apache-2.0 | 生命周期状态观察 |
 | AndroidX exifinterface | 1.4.1 | Apache-2.0 | EXIF 方向和拍摄时间 |
 | Kotlinx coroutines Android | 1.10.2 | Apache-2.0 | 串行后台管线和取消 |
+| PdfBox-Android | 2.0.27.0 | Apache-2.0；内含字体 / CMap 等资源许可 | 读取普通静态 PDF、复制页面及依赖对象；不栅格化合并 |
 
 Android 框架的 `BitmapFactory`、`Bitmap.compress`、`PdfRenderer`、SAF、通知和前台服务使用设备系统提供的 API。未将系统实现拷贝进源码。应用未引入 AGPL / GPL PDF 库或需要商业授权的 PDF SDK。
+
+PdfBox-Android 的完整上游 LICENSE 与 NOTICE 保存在 `app/src/main/assets/licenses/`，随 APK 分发，可从首页“开源许可”查看。依赖声明排除了本版不使用的 Bouncy Castle 传递依赖；加密输入在解密处理前拒绝，不提取附件、不包含 examples 模块。实施时已核对 [Apache PDFBox 安全公告](https://pdfbox.apache.org/security.html)，公告列出的 2026 年附件路径问题仅影响 examples，并不等于核心解析器对任意畸形输入都有资源安全保证；本应用仍执行独立规模、缓存与输出预算。
 
 ## 仅构建或测试使用
 
@@ -43,5 +46,7 @@ Android 框架的 `BitmapFactory`、`Bitmap.compress`、`PdfRenderer`、SAF、�
 - [JUnit4 许可](https://github.com/junit-team/junit4/blob/main/LICENSE-junit.txt)
 - [pypdf 许可](https://github.com/py-pdf/pypdf/blob/main/LICENSE)
 - [PyMuPDF 许可说明](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright)
+- [PdfBox-Android 2.0.27.0 LICENSE](https://github.com/TomRoush/PdfBox-Android/blob/v2.0.27.0/LICENSE.txt)
+- [PdfBox-Android 2.0.27.0 NOTICE](https://github.com/TomRoush/PdfBox-Android/blob/v2.0.27.0/NOTICE.txt)
 
 通过 `.\gradlew.bat :app:dependencies --configuration releaseRuntimeClasspath` 可查看当前实际解析的传递依赖。上述表格为直接依赖，不宣称代替每个传递依赖的逐文件通知。若变更依赖、发布 APK 或重新分发宿主验证环境，应复核相应上游许可证及 NOTICE。

@@ -14,7 +14,7 @@ import java.io.File
 import java.util.UUID
 
 /** Application-scoped state survives Activity recreation; the foreground service owns long work. */
-class AppRuntime(private val context: Context) {
+class AppRuntime(private val context: Context, private val taskGate: TaskGate = TaskGate()) {
     val repository = ImageRepository(context)
     private val folders = FolderRepository(context)
     private var folderJob: Job? = null
@@ -32,6 +32,10 @@ class AppRuntime(private val context: Context) {
     private var activeJob: Job? = null
     private var cancelRequested = false
     private var operationActive = false
+    private var operationLease: TaskGate.Lease? = null
+    private data class ExportSelection(val result: ResultUi, val lease: TaskGate.Lease)
+    private var exportSelection: ExportSelection? = null
+    private var exportWaiting = false
 
     private sealed interface Operation {
         data class Generate(val images: List<ImageEntry>, val settings: OutputSettings, val id: String) : Operation
@@ -69,9 +73,25 @@ class AppRuntime(private val context: Context) {
     }
     private suspend fun safelyPersist(): Boolean = try { persistNow(); true }
         catch (_: Exception) { mutable.update { it.copy(notice = "草稿暂时无法保存，请检查设备剩余空间。") }; false }
-    private fun canEdit() = ready && !operationActive && state.value.task == null &&
+    private suspend fun persistCompletion(transform: (AppUiState) -> AppUiState, release: () -> Unit) {
+        storeMutex.lock()
+        try {
+            val completed = transform(state.value)
+            try { withContext(Dispatchers.IO) { store.write(completed) } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { mutable.update { it.copy(notice = "草稿暂时无法保存，请检查设备剩余空间。") } }
+            release()
+            // Keep the journal lock through publication so an older queued write cannot replace
+            // the completed snapshot with an active=true snapshot after this final write.
+            change(transform)
+        } finally { storeMutex.unlock() }
+    }
+    private fun canEdit() = ready && !exportWaiting && taskGate.owner == null && !operationActive && state.value.task == null &&
         !state.value.importing && !state.value.readingFolder && state.value.folderSelection == null
-    fun canPick() = canEdit()
+    fun canPick(): Boolean {
+        if (taskGate.owner == "merge") { notice("PDF 合并任务正在处理，请稍后再开始图片操作。"); return false }
+        return canEdit()
+    }
 
     fun openFolder(uri: Uri?) {
         if (uri == null || !canEdit()) return
@@ -95,6 +115,7 @@ class AppRuntime(private val context: Context) {
         change { it.copy(readingFolder = false, folderSelection = null) }
     }
     fun importFolder(uris: List<String>) {
+        if (taskGate.owner != null) { notice("另一个 PDF 任务正在处理，已保留当前图片选择，请稍后再导入。"); return }
         val selection = state.value.folderSelection ?: return
         val selected = uris.distinct()
         val allowed = selection.images.map { it.uri }.toHashSet()
@@ -123,6 +144,7 @@ class AppRuntime(private val context: Context) {
     }
     private fun beginImport(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        val importLease = taskGate.tryAcquire("image") ?: run { notice("另一个 PDF 任务正在处理，请稍后再导入图片。"); return }
         val existing = state.value.images
         val duplicateCount = uris.size - uris.distinct().size + uris.distinct().count { uri ->
             existing.any { (it.originalUri ?: it.uri) == uri.toString() }
@@ -134,17 +156,20 @@ class AppRuntime(private val context: Context) {
                 val imported = repository.importImages(uris, nextOrder) { done, total ->
                     mutable.update { it.copy(importDone = done, importTotal = total) }
                 }
-                change { it.copy(images = existing + imported, importing = false, sortLabel = "自定义顺序",
+                change { it.copy(images = existing + imported, sortLabel = "自定义顺序",
                     notice = listOfNotNull(
                         if (duplicateCount > 0) "包含 $duplicateCount 张重复图片，已按选择保留。" else null,
                         if (imported.any { item -> item.error != null }) "部分图片无法读取，请查看异常标记并重新选择或删除。" else null
                     ).joinToString("\n").ifBlank { null }) }
-                safelyPersist()
+                // Publish completion only after editing can actually acquire the shared gate.
+                persistCompletion({ it.copy(importing = false) }) { importLease.close() }
             } catch (_: CancellationException) {
+                importLease.close()
                 change { it.copy(importing = false) }
             } catch (_: Exception) {
+                importLease.close()
                 change { it.copy(importing = false, error = "导入失败，请检查图片是否已下载、读取权限及设备空间后重试。") }
-            }
+            } finally { importLease.close() }
         }
     }
 
@@ -186,15 +211,57 @@ class AppRuntime(private val context: Context) {
         if (s.images.size !in 1..MAX_IMAGES) { error("请选择 1～500 张图片。"); return }
         if (s.images.any { it.error != null }) { error("请先删除或重新选择带异常标记的图片，再生成 PDF。"); return }
         val settings = s.settings.copy(fileName = sanitizeFileName(s.settings.fileName))
+        operationLease = taskGate.tryAcquire("image") ?: run { notice("另一个 PDF 任务正在处理，请稍后再开始。"); return }
         pending = Operation.Generate(s.images.toList(), settings, UUID.randomUUID().toString())
         operationActive = true
         change { it.copy(settings = settings, task = TaskUi(total = s.images.size), screen = AppScreen.PROGRESS, interrupted = false) }
         startService()
     }
+    /** Hold the selected result and gate across the external CreateDocument activity. */
+    fun prepareExportSelection(): ResultUi? {
+        if (!canEdit()) { notice("另一个 PDF 任务正在处理，请稍后再保存。"); return null }
+        val result = state.value.result ?: return null
+        val lease = taskGate.tryAcquire("image") ?: return null
+        exportSelection = ExportSelection(result, lease)
+        return result
+    }
+    fun cancelExportSelection() {
+        exportSelection?.lease?.close()
+        exportSelection = null
+    }
     fun export(target: Uri?) {
-        if (target == null) { notice("已取消另存，生成的 PDF 仍可预览、重新保存或分享。"); return }
-        if (!canEdit()) return
-        val result = state.value.result ?: return
+        val selection = exportSelection
+        exportSelection = null
+        if (target == null) {
+            selection?.lease?.close()
+            notice("已取消另存，生成的 PDF 仍可预览、重新保存或分享。"); return
+        }
+        if (selection != null) { beginExport(selection.result, target, selection.lease); return }
+        // Compatibility for direct callers and a picker result restored after process death.
+        // Never discard a newly selected destination merely because startup/another tool is busy.
+        if (exportWaiting) { notice("已有保存请求正在等待处理，请稍候。"); return }
+        val frozenResult = state.value.result
+        exportWaiting = true
+        scope.launch {
+            var acquired: TaskGate.Lease? = null
+            try {
+                while (!ready) delay(25)
+                val result = frozenResult ?: state.value.result
+                if (result == null) { error("完整 PDF 已无法读取，请重新生成后再保存。"); return@launch }
+                if (taskGate.owner != null || operationActive || state.value.importing) notice("正在等待当前任务结束，随后保存已选中的 PDF。")
+                while (acquired == null) {
+                    if (!operationActive && state.value.task == null && !state.value.importing &&
+                        !state.value.readingFolder && state.value.folderSelection == null) acquired = taskGate.tryAcquire("image")
+                    if (acquired == null) delay(25)
+                }
+                exportWaiting = false
+                beginExport(result, target, acquired!!)
+                acquired = null // Operation cleanup now owns this lease.
+            } finally { acquired?.close(); exportWaiting = false }
+        }
+    }
+    private fun beginExport(result: ResultUi, target: Uri, lease: TaskGate.Lease) {
+        operationLease = lease
         pending = Operation.Export(result, target)
         operationActive = true
         change { it.copy(task = TaskUi(stage = "正在保存", total = result.pageCount, exporting = true, totalBytes = result.bytes), screen = AppScreen.PROGRESS) }
@@ -207,10 +274,11 @@ class AppRuntime(private val context: Context) {
                 persistNow()
                 ensureActive()
                 ContextCompat.startForegroundService(context, Intent(context, ConversionService::class.java))
-            } catch (_: CancellationException) { finishCancelled(); operationActive = false }
+            } catch (_: CancellationException) { operationActive = false; releaseOperation(); finishCancelled() }
             catch (_: Exception) {
                 pending = null
                 operationActive = false
+                releaseOperation()
                 change { it.copy(task = null, screen = if (it.result != null) AppScreen.RESULT else AppScreen.SETTINGS,
                     error = "系统暂时无法启动后台任务，请保持应用在前台后重试。") }
             }
@@ -219,7 +287,7 @@ class AppRuntime(private val context: Context) {
     internal fun executePending(service: ConversionService) {
         val operation = pending
         if (operation == null || cancelRequested) {
-            finishCancelled(); service.finishWork(); operationActive = false; return
+            service.finishWork(); operationActive = false; releaseOperation(); finishCancelled(); return
         }
         repository.clearThumbnailCache()
         activeJob = scope.launch {
@@ -233,34 +301,52 @@ class AppRuntime(private val context: Context) {
                         }
                         ensureActive()
                         val result = ResultUi(output.path, operation.settings.fileName, operation.images.size, output.length())
-                        change { it.copy(result = result, task = null, screen = AppScreen.RESULT) }
+                        change { it.copy(result = result, screen = AppScreen.RESULT) }
                     }
                     is Operation.Export -> {
                         withContext(Dispatchers.IO) { exporter.export(File(operation.result.filePath), operation.target) { copied, total ->
                             mutable.update { s -> s.copy(task = s.task?.copy(copiedBytes = copied, totalBytes = total)) }
                         } }
                         // A fully closed successful copy wins over a late cancel tap.
-                        change { it.copy(task = null, result = operation.result.copy(exported = true), screen = AppScreen.RESULT, notice = "保存成功。") }
+                        change { it.copy(result = operation.result.copy(exported = true), screen = AppScreen.RESULT, notice = "保存成功。") }
                     }
                 }
-            } catch (_: CancellationException) { finishCancelled() }
+            } catch (_: CancellationException) { finishCancelledAfterOperation(operation, keepTask = true) }
             catch (problem: ImageProcessingException) {
-                change { s -> s.copy(task = null, screen = AppScreen.ORGANIZE,
+                change { s -> s.copy(screen = AppScreen.ORGANIZE,
                     images = s.images.map { if (it.id == problem.itemId) it.copy(error = problem.message) else it },
                     error = problem.message ?: "图片处理失败，请删除异常图片后重试。") }
             } catch (problem: Exception) {
-                change { it.copy(task = null, screen = if (operation is Operation.Export) AppScreen.RESULT else AppScreen.SETTINGS,
+                change { it.copy(screen = if (operation is Operation.Export) AppScreen.RESULT else AppScreen.SETTINGS,
                     error = problem.message?.takeIf { msg -> msg.any { char -> char.code in 0x4e00..0x9fff } }
                         ?: if (operation is Operation.Export) "保存失败，目标可能存在不完整文件。已保留完整 PDF，请换个位置重试。"
                         else "生成失败，请检查图片读取权限和设备空间后重试。") }
             } finally {
                 pending = null
-                withContext(NonCancellable) { runCatching { persistNow() } }
-                service.finishWork()
-                operationActive = false
-                activeJob = null
+                // Until persistence and service cleanup finish, keep the task visibly busy.
+                // An observer of task == null can now immediately start/edit without a lost tap.
+                withContext(NonCancellable) {
+                    persistCompletion({ it.copy(task = null) }) {
+                        service.finishWork()
+                        operationActive = false
+                        activeJob = null
+                        releaseOperation()
+                    }
+                }
             }
         }
+    }
+    private fun releaseOperation() { operationLease?.close(); operationLease = null }
+    private suspend fun finishCancelledAfterOperation(operation: Operation, keepTask: Boolean = false) {
+        val committed = if (operation is Operation.Generate) withContext(NonCancellable + Dispatchers.IO) {
+            File(context.filesDir, "results/${operation.id}/${sanitizeFileName(operation.settings.fileName)}")
+                .takeIf { it.isFile && it.length() > 0 }
+        } else null
+        if (committed != null && operation is Operation.Generate) {
+            // The converter only renames to this task-specific path after complete validation.
+            change { it.copy(task = if (keepTask) it.task else null, result = ResultUi(committed.path, committed.name, operation.images.size, committed.length()),
+                screen = AppScreen.RESULT, notice = "取消到达时 PDF 已生成完成，完整结果已保留，请预览或另存。") }
+        } else finishCancelled(keepTask)
     }
     fun cancel() {
         if (state.value.task == null) return
@@ -268,9 +354,9 @@ class AppRuntime(private val context: Context) {
         change { it.copy(task = it.task?.copy(cancelling = true, stage = "正在取消，等待当前步骤结束")) }
         activeJob?.cancel()
     }
-    private fun finishCancelled() {
+    private fun finishCancelled(keepTask: Boolean = false) {
         pending = null
-        change { it.copy(task = null, screen = if (it.result != null) AppScreen.RESULT else AppScreen.ORGANIZE,
+        change { it.copy(task = if (keepTask) it.task else null, screen = if (it.result != null) AppScreen.RESULT else AppScreen.ORGANIZE,
             notice = "任务已取消，图片顺序已保留。已生成的完整文件仍可使用。") }
     }
     fun newTask() {

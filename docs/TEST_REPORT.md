@@ -1,8 +1,88 @@
 # 测试报告
 
-更新日期：2026-10-27（Asia/Shanghai）。以下保留 2026-10-26 已执行记录；新增结果按实际版本区分。需求基线：文件夹内《安卓图片合并 PDF App 需求文档》V1.0。
+更新日期：2026-10-28（Asia/Shanghai）。以下保留各版本已执行记录；新增结果按实际版本区分。需求基线：文件夹内《安卓图片合并 PDF App 需求文档》V1.0，以及后续独立 PDF 合并需求。
 
-## 本轮 1.0.3 更名安装与回归验证
+## 当前 1.1.0 / code 6 候选：M0 / M1 状态
+
+名称仍为 **l君のpdf转换**，主包 `cn.local.imagepdf`，最低 API 26。图片转 PDF 保留，新增独立 PDF 合并页及其原子草稿、私有来源副本、重任务互斥和前台进度 / 取消。已在 vivo V2505A / Android 16（API 36）完成引擎和最大页数测试，**最终流程回归通过并已同签名更新主包；用户随后反馈 vivo 恶意软件风险提示，原因正在调查，交付与推送暂缓**。功能测试不等于安全结论。
+
+| 项目 | 本轮实际状态 | 证据与限制 |
+| --- | --- | --- |
+| 最新主包统一构建 | BUILD SUCCESSFUL，46 s；包含导入解锁、导出竞争和堆预算 GC 复查修复 | `merge-memory-fix-build.log`；lint 0 errors / 14 warnings；旧 `:core:test` 为 UP-TO-DATE，不称重新执行旧 19 项 |
+| 新增引擎 / 来源隔离测试 | **10 通过、0 失败、0 跳过，4.895 s** | `build/merge-engine-device-accepted.log`；包含 50 份 / 1000 页、文字 / 矢量 / 页框 / 旋转、坏文件与复杂内容拒绝、取消清理、草稿路径与跨工具来源隔离 |
+| 独立输出复核 | **1000 页全文 / 顺序 / 页框 / 旋转 / 内容流全量通过，三页像素抽查通过** | `build/merge-device-evidence/1793189377164/independent-validation.json`；strict pypdf + MuPDF，无修复，范围见下一节 |
+| 最终界面、图片、运行时与服务回归 | **15 通过、0 失败、0 跳过，26.551 s**；合并三项 UI + 四项文件夹全选 / 500 导入、单批 500 / 501、Pipeline、AppFlow、MergeRuntime 和残留取消服务 | `build/merge-flow-device-accepted.log`；使用受控夹具及正常前台辅助，系统选择 / SAF 外部界面未因此视为全部验收 |
+| 测试组件 | 结果预览窗口等待修正后的测试 APK 构建成功，7 s；已安装并实际完成上述 15 项 | `merge-preview-test-build.log` 与 accepted 设备日志分别记录构建和执行，不混淆二者 |
+| 主包安装与启动 | `install -r` 返回 Success，现为 **1.1.0 / code 6、同调试签名**；携带合并页参数的启动请求返回 Status ok，冷启动 463 ms（未另取主包画面证据） | firstInstallTime 仍为 2026-10-27 22:16:59，与安装前一致；未卸载 / 清数据，未逐项读取比对原私有草稿；已安装 APK 与构建 debug 文件均为 13,507,877 bytes、SHA-256 完全一致，见 `build/merge-installed-check/verification.json` |
+| 手机安全提示 | **用户确认 vivo 恶意软件风险提示针对主应用，原因待定位** | 告警原文 / 检测引擎 / 威胁名尚未取得；本机 Defender 扫描完成、项目匹配检测为 0，仍不能消除手机告警；交付与推送暂缓 |
+| M2 / M3 | **未实施** | 百宝箱首页 / 正式更名和解混淆整合仍为后续范围 |
+
+### 手机安全提示与交付状态
+
+主应用完成覆盖安装后，用户确认 vivo 恶意软件风险提示针对“l君のpdf转换”主应用；尚未取得具体告警原文、检测引擎或威胁名。`build/merge-installed-check/verification.json` 证实已安装包与构建 debug APK 完全一致：13,507,877 bytes，SHA-256 `d7acc34c68a3e8b3663a6ce04167e60e0fe2fadaabec2b9db395d373bd74cb20`。这只证明文件身份，不证明安全或误报。
+
+本机 Defender 扫描于 2026-10-28 20:17:22～20:17:27（Asia/Shanghai）完成，`build/merge-defender-scan.json` 的项目匹配检测数为 0；该结果不能消除 vivo 警报，也不构成所有检测引擎或所有依赖均安全的结论。没有关闭安全检查、绕过警告、卸载应用或清除数据。**功能回归已完成；手机安全告警未定位前，交付与 GitHub 推送暂缓。** 调查依据和剩余事项见 [安全核查记录](SECURITY_REVIEW.md)。
+
+### 已通过的 50 份 / 1000 页与独立复核
+
+实测包为 `cn.local.imagepdf.mergeqa.benchmark`，1.1.0 / code 6、benchmark、debuggable=true。设备 vivo V2505A / Android 16（API 36），RAM 15,952,412,672 bytes，Java 堆上限 268,435,456 bytes；不是 4 GB 基准机。样本为 **50 份各 20 页的微小合成 PDF**，有唯一 ASCII 标签、矢量、部分 JPEG 及混合页框和旋转，不含个人文件。
+
+| 指标 | 本轮实测 |
+| --- | --- |
+| 导入并检查 | 1,038 ms |
+| 合并并完成应用内校验 | 650 ms |
+| 输入 / 输出实际字节数 | 664,693 / 667,281 bytes |
+| 离散样本中的最大 Java 已用堆 / Native 分配 | 140,312,672 / 29,722,272 bytes |
+| 离散样本中的最大 PSS / RSS | 245,051 / 380,216 KiB |
+| 离散样本中的最多文件描述符 | 179 |
+| 输出 SHA-256 | `79e0b6a0312c1b45edb360108e90965f6b3605df5e0aac19046e89aa8cf5b5cd` |
+
+原始证据为 `build/merge-device-evidence/1793189377164/summary.txt`、`memory.csv`、50 份 `inputs/source-*.pdf`、`expected-pages.csv` 和 `merged.pdf`。耗时不包含样本生成和完成后的外部证据镜像复制。内存共 **14 个离散阶段样本**（导入前后、合并开始、每 100 页、完成），不是全过程真实峰值或恒定内存证明。
+
+`scripts/verify_merge_pdf.py` 的 `independent-validation.json` 记录 passed=true：strict pypdf 对所有 1000 页检查唯一文字与顺序、MediaBox / CropBox / 旋转以及解码后的页面内容流与原页一致；MuPDF 无需修复，并对第 **1、501、1000 页**渲染，与原页像素一致且检测到矢量绘制。三张抽样图已目视检查；没有声称全部 1000 页都逐页目视或逐页像素比较。
+
+这证明本台设备在上述微小合成数据上的 50 份 / 1000 页路径和已列内容保留正确，**不是 256 / 512 MiB 大输入、任意复杂 PDF、真实相机图组、4 GB、后台 / 熄屏或取消最坏时延的认证**。
+
+### 首轮失败、中断与修复记录
+
+这些记录属于修复前的 1.1.0 候选，不因后续通过而删除或改写；表中“下一步”是当轮状态，最终功能通过情况以上方 accepted 记录为准。测试使用独立 `cn.local.imagepdf.benchmark`，不向主应用导入合成资料；现有 benchmark 草稿同样受保护，不通过清数据或卸载绕过 Assume。
+
+| 轮次 | 实际统计 | 定位与下一步 |
+| --- | --- | --- |
+| `build/merge-engine-device.log` | **10 项：7 通过、3 失败、0 跳过，5.751 s** | 两项文字顺序断言失败（3 页基础混排、50 份 / 1000 页）。后续诊断证实原始旋转页与合并页都被 PDFBox-Android 按字组分行，单标签全文查找的测试假设不成立；3 页独立复核通过，修复后的完整设备套件仍待重跑。草稿恢复项为 `/data/user/0` 与 `/data/data` 同目录别名导致直接字符串断言不同，将按 canonical 路径校验 |
+| `build/merge-ui-runtime-device-first.log` | 计划 5 项；**1 通过、1 超时失败、1 开始后中断、2 未执行** | 排序项等待 15 s 超时；稳定 key 的列表重排会保留滚动锚点，测试增加回到列表起点并记录阶段。最少输入 / 双工具锁定项通过。预览项开始后 runner 报 Process crashed；现场 exit-info 证实为系统 single-cleaner FORCE STOP，没有据此判定生产 UI 崩溃 |
+| `build/merge-regression-device-first.log` | **12 项：9 通过、2 失败、1 Assume 跳过，38.059 s** | Pipeline 4、Folder 4、残留取消通知服务 1 均通过。BatchImport 在末项旋转断言得到 0° 而预期 90°，暴露导入状态已完成但 gate 尚未释放的真实时序竞争；AppFlow 超时待修复重测。MergeRuntime 因存在合并草稿而主动跳过，没有替换原草稿 |
+
+### 修复后的中间轮次
+
+后续改用全新 `cn.local.imagepdf.mergeqa.benchmark` 测试包及匹配组件，与主包和原 `.benchmark` 均隔离；原测试包中既有草稿继续保留。测试只处理受控合成文件，使用普通前台 Intent 辅助，不改变手机电源或安全设置。
+
+| 轮次 | 实际统计 | 证据与范围 |
+| --- | --- | --- |
+| `build/merge-engine-device-final.log` | **10 项：5 通过、5 失败、0 跳过** | 50 份 / 1000 页在 300 页后触发 Java 已用堆 70% 检查，随后其他引擎用例也被预算拒绝；原始失败内存 CSV 保留。这轮不能算规模或内容回归通过。后续修复为越 70% 时至多一次 GC 后复查，仍超限停止；1 秒内再次越线直接拒绝，保持原阈值，不循环等待；失败采样 `build/merge-memory-budget-failed.csv` 保留 |
+| `build/merge-flow-device-final.log` | **15 项：14 通过、1 失败、0 跳过，35.999 s** | 12 项图片 / 运行时 / 服务回归全部通过，含单批 500 / 501、AppFlow、MergeRuntime、四项文件夹全选和旧通知取消；排序和输入限制两项 UI 通过。输入 PDF 实际预览 / 翻页 / 关闭后，结果预览项点击后等待超时，仍需修复和重测 |
+
+文件名含 final 不代表最终验收，以上仍按实际失败轮次记录。`merge-final-tests-build.log` 的 BUILD SUCCESSFUL in 13s 只证明测试 APK 构建成功，不代替这两轮设备结果。
+
+### 文字抽取诊断的独立复核
+
+`build/merge-text-diagnostic/three-pages-1793188611848/independent-diagnostic.json` 记录受控三页合并诊断通过：strict pypdf 逐页提取完整标签，顺序为 DOC002_PAGE001 → DOC001_PAGE001 → DOC001_PAGE002；所有五类页框与旋转一致，解码后的页面内容流逐字节相同，MuPDF 无修复打开，全部三页渲染像素逐字节一致。原始旋转页和合并页的 PDFBox-Android 文本抽取均存在分行，不是合并丢字的证据。
+
+测试改为逐页分隔并只去除合成 ASCII 单标签的抽取空白，仍严格核对完整标签、页序、原 / 输出内容流、五类页框和旋转；没有放宽生产内容保留要求。这份三页诊断不能替代 50 份 / 1000 页回归或真实外部文档兼容验收。
+
+后续轮次使用独立的新测试包执行受控夹具，保留原 `.benchmark` 的现有数据；完整通过的 accepted 日志及独立复核已记录在本节前部，最终交付仍受上述手机安全告警待定位状态限制。
+
+本轮候选限制为 2～50 份 PDF、总计最多 1000 页、单份 256 MiB、输入合计及输出各 512 MiB。解析源与目标的磁盘 scratch 分别最多 256 / 512 MiB；Java 已用堆在检查点越过上限 70% 时至多一次 GC 后复查，仍超限停止；1 秒内再次越线直接拒绝，另有对象图预算。scratch 是磁盘用量，70% 是离散停止条件，均不能当作真实峰值或恒定内存保证。4 GB、后台 / 熄屏、取消最坏时延和任意复杂输入稳定性尚未验收。
+
+兼容检查严格收窄：Catalog 仅允许 Type / Pages / Version，含文档级 Metadata、Lang、ViewerPreferences 等字段也会拒绝；书签、标签、注释、链接、表单、附件、数字签名、加密和其他未支持复杂内容不接受。此实现不是通用所有 PDF 兼容，完整行为见 [PDF 合并说明](PDF_MERGE.md)。
+
+完整第三方 LICENSE / NOTICE 已在 APK assets 及首页“开源许可”提供，本版排除未使用的 Bouncy Castle、未包含 examples；官方安全页核对与依赖边界见 [许可证清单](../THIRD_PARTY_NOTICES.md)。这不能代替解析器资源边界或真机测试。
+
+<!-- merge-1.1.0-evidence: functional regression and installed hash verified; delivery/push held pending vivo security-warning investigation -->
+
+以下 1.0.3 及更早实测保持历史版本归属。1.0.4 为签名 / 版本变更，没有新增设备仪器测试结果；下文旧结果不充作 1.1.0 合并或图片回归证据。
+
+## 历史 1.0.3 更名安装与回归验证
 
 正式名称为 **`l君のpdf转换`**（小写 `l`、日文 `の`），主应用包名 `cn.local.imagepdf`，版本 **1.0.3 / versionCode 4**。本轮实际结果见 `build/release-1.0.3-verification.json`：
 
@@ -16,7 +96,7 @@
 
 安装前未检测到设备主包，因此本轮不能称为已验证 1.0.2 → 1.0.3 的升级或数据迁移。6.231 秒是文件夹控件与微小合成图片导入回归耗时，不是 500 张 12MP 转换耗时；真实系统目录 / SAF、4 GB 设备、真实相机组、熄屏后台和连续真实峰值等限制仍保留。
 
-以下是 1.0.2 及更早版本的历史报告，保留当时的名称、版本、成功、失败与中断数据；其中“当前”按该历史记录当时的版本理解，本轮交付版本以本节 1.0.3 结果为准。
+以下是 1.0.2 及更早版本的历史报告，保留当时的名称、版本、成功、失败与中断数据；其中“当前”按该历史记录当时的版本理解，当前候选的状态以上方 1.1.0 节为准。
 
 ## 1.0.2 及更早历史报告
 
